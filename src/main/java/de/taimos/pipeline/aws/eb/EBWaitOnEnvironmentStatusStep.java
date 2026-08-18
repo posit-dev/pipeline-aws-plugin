@@ -19,7 +19,7 @@ import org.jenkinsci.plugins.workflow.steps.SynchronousNonBlockingStepExecution;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.util.Collections;
 import java.util.Set;
 
@@ -57,7 +57,7 @@ public class EBWaitOnEnvironmentStatusStep extends Step {
 			return "ebWaitOnEnvironmentStatus";
 		}
 
-		@Nonnull
+		@NonNull
 		@Override
 		public String getDisplayName() {
 			return "Waits until the specified environment becomes available";
@@ -68,7 +68,7 @@ public class EBWaitOnEnvironmentStatusStep extends Step {
 		private static final long serialVersionUID = 1L;
 		private final transient EBWaitOnEnvironmentStatusStep step;
 
-		protected Execution(EBWaitOnEnvironmentStatusStep step, @Nonnull StepContext context) {
+		protected Execution(EBWaitOnEnvironmentStatusStep step, @NonNull StepContext context) {
 			super(context);
 			this.step = step;
 		}

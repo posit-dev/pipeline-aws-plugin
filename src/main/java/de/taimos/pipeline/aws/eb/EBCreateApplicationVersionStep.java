@@ -18,7 +18,7 @@ import org.jenkinsci.plugins.workflow.steps.StepExecution;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.util.Set;
 
 public class EBCreateApplicationVersionStep extends Step {
@@ -59,7 +59,7 @@ public class EBCreateApplicationVersionStep extends Step {
 			return "ebCreateApplicationVersion";
 		}
 
-		@Nonnull
+		@NonNull
 		@Override
 		public String getDisplayName() {
 			return "Creates a new version for an elastic beanstalk application";
@@ -70,7 +70,7 @@ public class EBCreateApplicationVersionStep extends Step {
 		private static final long serialVersionUID = 1L;
 		private final transient EBCreateApplicationVersionStep step;
 
-		protected Execution(EBCreateApplicationVersionStep step, @Nonnull StepContext context) {
+		protected Execution(EBCreateApplicationVersionStep step, @NonNull StepContext context) {
 			super(context);
 			this.step = step;
 		}

@@ -37,7 +37,7 @@ import org.jenkinsci.plugins.workflow.steps.StepExecution;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -94,7 +94,7 @@ public class CFNUpdateStackSetStep extends AbstractCFNCreateStackSetStep {
 
 	public static class Execution extends AbstractCFNCreateStackSetStep.Execution<CFNUpdateStackSetStep> {
 
-		protected Execution(CFNUpdateStackSetStep step, @Nonnull StepContext context) {
+		protected Execution(CFNUpdateStackSetStep step, @NonNull StepContext context) {
 			super(step, context);
 		}
 

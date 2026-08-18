@@ -25,7 +25,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 
 import com.amazonaws.services.cloudformation.model.ValidateTemplateResult;
 import com.amazonaws.services.cloudformation.model.transform.ValidateTemplateRequestMarshaller;
@@ -109,7 +109,7 @@ public class CFNValidateStep extends Step {
 
 		private final transient CFNValidateStep step;
 
-		public Execution(CFNValidateStep step, @Nonnull StepContext context) {
+		public Execution(CFNValidateStep step, @NonNull StepContext context) {
 			super(context);
 			this.step = step;
 		}
@@ -160,7 +160,7 @@ public class CFNValidateStep extends Step {
 		}
 
 		@Override
-		public void stop(@Nonnull Throwable cause) throws Exception {
+		public void stop(@NonNull Throwable cause) throws Exception {
 			//
 		}
 

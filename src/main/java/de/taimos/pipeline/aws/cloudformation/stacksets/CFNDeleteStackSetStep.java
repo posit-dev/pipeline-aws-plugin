@@ -37,7 +37,7 @@ import org.jenkinsci.plugins.workflow.steps.SynchronousNonBlockingStepExecution;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.util.Set;
 
 public class CFNDeleteStackSetStep extends Step {
@@ -77,7 +77,7 @@ public class CFNDeleteStackSetStep extends Step {
 		}
 
 		@Override
-		@Nonnull
+		@NonNull
 		public String getDisplayName() {
 			return "Delete CloudFormation Stack Set";
 		}
@@ -92,7 +92,7 @@ public class CFNDeleteStackSetStep extends Step {
 
 		private transient CFNDeleteStackSetStep step;
 
-		public Execution(CFNDeleteStackSetStep step, @Nonnull StepContext context) {
+		public Execution(CFNDeleteStackSetStep step, @NonNull StepContext context) {
 			super(context);
 			this.step = step;
 		}

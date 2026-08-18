@@ -22,7 +22,7 @@ import org.jenkinsci.plugins.workflow.steps.StepExecution;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.Set;
@@ -85,7 +85,7 @@ public class EBCreateEnvironmentStep extends Step {
 			return "ebCreateEnvironment";
 		}
 
-		@Nonnull
+		@NonNull
 		@Override
 		public String getDisplayName() {
 			return "Creates a new Elastic Beanstalk environment";
@@ -96,7 +96,7 @@ public class EBCreateEnvironmentStep extends Step {
 		private static final long serialVersionUID = 1L;
 		private final transient EBCreateEnvironmentStep step;
 
-		protected Execution(EBCreateEnvironmentStep step, @Nonnull StepContext context) {
+		protected Execution(EBCreateEnvironmentStep step, @NonNull StepContext context) {
 			super(context);
 			this.step = step;
 		}

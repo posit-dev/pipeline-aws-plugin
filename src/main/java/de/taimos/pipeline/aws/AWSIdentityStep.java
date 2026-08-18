@@ -25,7 +25,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 
 import org.jenkinsci.plugins.workflow.steps.Step;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
@@ -76,7 +76,7 @@ public class AWSIdentityStep extends Step {
 
 	public static class Execution extends SynchronousNonBlockingStepExecution<Map<String, String>> {
 
-		protected Execution(@Nonnull StepContext context) {
+		protected Execution(@NonNull StepContext context) {
 			super(context);
 		}
 

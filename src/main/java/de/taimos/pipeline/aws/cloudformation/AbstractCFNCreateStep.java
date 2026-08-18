@@ -39,7 +39,7 @@ import org.jenkinsci.plugins.workflow.steps.StepContext;
 import org.jenkinsci.plugins.workflow.steps.SynchronousNonBlockingStepExecution;
 import org.kohsuke.stapler.DataBoundSetter;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.io.IOException;
 import java.util.Collection;
 
@@ -79,7 +79,7 @@ abstract class AbstractCFNCreateStep extends TemplateStepBase {
 
 		private final transient C step;
 
-		protected Execution(C step, @Nonnull StepContext context) {
+		protected Execution(C step, @NonNull StepContext context) {
 			super(context);
 			this.step = step;
 		}
