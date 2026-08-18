@@ -1,9 +1,9 @@
 package de.taimos.pipeline.aws.eb;
 
-import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalk;
-import com.amazonaws.services.elasticbeanstalk.model.ApplicationDescription;
-import com.amazonaws.services.elasticbeanstalk.model.CreateApplicationRequest;
-import com.amazonaws.services.elasticbeanstalk.model.CreateApplicationResult;
+import software.amazon.awssdk.services.elasticbeanstalk.ElasticBeanstalkClient;
+import software.amazon.awssdk.services.elasticbeanstalk.model.ApplicationDescription;
+import software.amazon.awssdk.services.elasticbeanstalk.model.CreateApplicationRequest;
+import software.amazon.awssdk.services.elasticbeanstalk.model.CreateApplicationResponse;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -37,14 +37,15 @@ public class EBCreateApplicationStepTest {
         EBCreateApplicationStep step = new EBCreateApplicationStep("my application");
         EBCreateApplicationStep.Execution execution = new EBCreateApplicationStep.Execution(step, context);
 
-        AWSElasticBeanstalk client = EBTestingUtils.setupElasticBeanstalkClient();
-        CreateApplicationResult result = new CreateApplicationResult();
-        result.setApplication(new ApplicationDescription());
-        Mockito.when(client.createApplication(Mockito.any())).thenReturn(result);
+        ElasticBeanstalkClient client = EBTestingUtils.setupElasticBeanstalkClient();
+        CreateApplicationResponse result = CreateApplicationResponse.builder()
+                .application(ApplicationDescription.builder().build())
+                .build();
+        Mockito.when(client.createApplication(Mockito.any(CreateApplicationRequest.class))).thenReturn(result);
 
         execution.run();
 
         Mockito.verify(client, Mockito.times(1)).createApplication(captor.capture());
-        Assert.assertEquals("my application", captor.getValue().getApplicationName());
+        Assert.assertEquals("my application", captor.getValue().applicationName());
     }
 }

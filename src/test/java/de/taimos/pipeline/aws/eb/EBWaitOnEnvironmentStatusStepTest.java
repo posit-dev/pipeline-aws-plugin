@@ -1,9 +1,9 @@
 package de.taimos.pipeline.aws.eb;
 
-import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalk;
-import com.amazonaws.services.elasticbeanstalk.model.DescribeEnvironmentsRequest;
-import com.amazonaws.services.elasticbeanstalk.model.DescribeEnvironmentsResult;
-import com.amazonaws.services.elasticbeanstalk.model.EnvironmentDescription;
+import software.amazon.awssdk.services.elasticbeanstalk.ElasticBeanstalkClient;
+import software.amazon.awssdk.services.elasticbeanstalk.model.DescribeEnvironmentsRequest;
+import software.amazon.awssdk.services.elasticbeanstalk.model.DescribeEnvironmentsResponse;
+import software.amazon.awssdk.services.elasticbeanstalk.model.EnvironmentDescription;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -39,17 +39,19 @@ public class EBWaitOnEnvironmentStatusStepTest {
         EBWaitOnEnvironmentStatusStep step = new EBWaitOnEnvironmentStatusStep("my application", "my-environment");
         EBWaitOnEnvironmentStatusStep.Execution execution = new EBWaitOnEnvironmentStatusStep.Execution(step, context);
 
-        AWSElasticBeanstalk client = EBTestingUtils.setupElasticBeanstalkClient();
-        DescribeEnvironmentsResult result = new DescribeEnvironmentsResult();
-        EnvironmentDescription environment = new EnvironmentDescription();
-        environment.setStatus("Ready");
-        result.setEnvironments(Collections.singletonList(environment));
-        Mockito.when(client.describeEnvironments(Mockito.any())).thenReturn(result);
+        ElasticBeanstalkClient client = EBTestingUtils.setupElasticBeanstalkClient();
+        EnvironmentDescription environment = EnvironmentDescription.builder()
+                .status("Ready")
+                .build();
+        DescribeEnvironmentsResponse result = DescribeEnvironmentsResponse.builder()
+                .environments(Collections.singletonList(environment))
+                .build();
+        Mockito.when(client.describeEnvironments(Mockito.any(DescribeEnvironmentsRequest.class))).thenReturn(result);
 
         execution.run();
 
         Mockito.verify(client, Mockito.times(1)).describeEnvironments(describeCaptor.capture());
-        Assert.assertEquals("my application", describeCaptor.getValue().getApplicationName());
-        Assert.assertEquals("my-environment", describeCaptor.getValue().getEnvironmentNames().get(0));
+        Assert.assertEquals("my application", describeCaptor.getValue().applicationName());
+        Assert.assertEquals("my-environment", describeCaptor.getValue().environmentNames().get(0));
     }
 }

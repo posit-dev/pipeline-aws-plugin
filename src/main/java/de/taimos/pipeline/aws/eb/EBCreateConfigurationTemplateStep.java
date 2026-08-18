@@ -1,10 +1,9 @@
 package de.taimos.pipeline.aws.eb;
 
-import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalk;
-import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalkClientBuilder;
-import com.amazonaws.services.elasticbeanstalk.model.CreateConfigurationTemplateRequest;
-import com.amazonaws.services.elasticbeanstalk.model.CreateConfigurationTemplateResult;
-import com.amazonaws.services.elasticbeanstalk.model.SourceConfiguration;
+import software.amazon.awssdk.services.elasticbeanstalk.ElasticBeanstalkClient;
+import software.amazon.awssdk.services.elasticbeanstalk.model.CreateConfigurationTemplateRequest;
+import software.amazon.awssdk.services.elasticbeanstalk.model.CreateConfigurationTemplateResponse;
+import software.amazon.awssdk.services.elasticbeanstalk.model.SourceConfiguration;
 import de.taimos.pipeline.aws.AWSClientFactory;
 import de.taimos.pipeline.aws.utils.StepUtils;
 import hudson.EnvVars;
@@ -98,31 +97,33 @@ public class EBCreateConfigurationTemplateStep extends Step {
 		@Override
 		protected Void run() throws Exception {
 			TaskListener listener = this.getContext().get(TaskListener.class);
-			AWSElasticBeanstalk client = AWSClientFactory.create(
-					AWSElasticBeanstalkClientBuilder.standard(),
+			ElasticBeanstalkClient client = AWSClientFactory.create(
+					ElasticBeanstalkClient.builder(),
 					this.getContext(),
 					this.getContext().get(EnvVars.class)
 			);
 
 			listener.getLogger().format("Creating configuration template (%s) for application (%s) %n", step.templateName, step.applicationName);
 
-			CreateConfigurationTemplateRequest request = new CreateConfigurationTemplateRequest();
-			request.setApplicationName(step.applicationName);
-			request.setTemplateName(step.templateName);
-			request.setEnvironmentId(step.environmentId);
-			request.setDescription(step.description);
-			request.setSolutionStackName(step.solutionStackName);
+			SourceConfiguration sourceConfiguration = SourceConfiguration.builder()
+					.applicationName(step.sourceConfigurationApplication)
+					.templateName(step.sourceConfigurationTemplate)
+					.build();
 
-			SourceConfiguration sourceConfiguration = new SourceConfiguration();
-			sourceConfiguration.setApplicationName(step.sourceConfigurationApplication);
-			sourceConfiguration.setTemplateName(step.sourceConfigurationTemplate);
-			request.setSourceConfiguration(sourceConfiguration);
+			CreateConfigurationTemplateRequest request = CreateConfigurationTemplateRequest.builder()
+					.applicationName(step.applicationName)
+					.templateName(step.templateName)
+					.environmentId(step.environmentId)
+					.description(step.description)
+					.solutionStackName(step.solutionStackName)
+					.sourceConfiguration(sourceConfiguration)
+					.build();
 
-			CreateConfigurationTemplateResult result = client.createConfigurationTemplate(request);
+			CreateConfigurationTemplateResponse result = client.createConfigurationTemplate(request);
 			listener.getLogger().format(
 					"Created a new configuration template (%s) for the application (%s) %n",
-					result.getTemplateName(),
-					result.getTemplateName()
+					result.templateName(),
+					result.templateName()
 			);
 
 			return null;

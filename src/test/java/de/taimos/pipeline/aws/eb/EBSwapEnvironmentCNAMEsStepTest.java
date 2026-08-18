@@ -1,9 +1,10 @@
 package de.taimos.pipeline.aws.eb;
 
-import com.amazonaws.services.elasticbeanstalk.AWSElasticBeanstalk;
-import com.amazonaws.services.elasticbeanstalk.model.DescribeEnvironmentsResult;
-import com.amazonaws.services.elasticbeanstalk.model.EnvironmentDescription;
-import com.amazonaws.services.elasticbeanstalk.model.SwapEnvironmentCNAMEsRequest;
+import software.amazon.awssdk.services.elasticbeanstalk.ElasticBeanstalkClient;
+import software.amazon.awssdk.services.elasticbeanstalk.model.DescribeEnvironmentsRequest;
+import software.amazon.awssdk.services.elasticbeanstalk.model.DescribeEnvironmentsResponse;
+import software.amazon.awssdk.services.elasticbeanstalk.model.EnvironmentDescription;
+import software.amazon.awssdk.services.elasticbeanstalk.model.SwapEnvironmentCnamEsRequest;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -19,7 +20,7 @@ import java.util.Arrays;
 @RunWith(MockitoJUnitRunner.class)
 public class EBSwapEnvironmentCNAMEsStepTest {
     @Captor
-    ArgumentCaptor<SwapEnvironmentCNAMEsRequest> captor;
+    ArgumentCaptor<SwapEnvironmentCnamEsRequest> captor;
 
     private static StepContext context;
 
@@ -43,14 +44,14 @@ public class EBSwapEnvironmentCNAMEsStepTest {
         step.setDestinationEnvironmentName("destination-name");
         EBSwapEnvironmentCNAMEsStep.Execution execution = new EBSwapEnvironmentCNAMEsStep.Execution(step, context);
 
-        AWSElasticBeanstalk client = EBTestingUtils.setupElasticBeanstalkClient();
+        ElasticBeanstalkClient client = EBTestingUtils.setupElasticBeanstalkClient();
         execution.run();
 
         Mockito.verify(client, Mockito.times(1)).swapEnvironmentCNAMEs(captor.capture());
-        Assert.assertEquals("source-id", captor.getValue().getSourceEnvironmentId());
-        Assert.assertEquals("source-name", captor.getValue().getSourceEnvironmentName());
-        Assert.assertEquals("destination-id", captor.getValue().getDestinationEnvironmentId());
-        Assert.assertEquals("destination-name", captor.getValue().getDestinationEnvironmentName());
+        Assert.assertEquals("source-id", captor.getValue().sourceEnvironmentId());
+        Assert.assertEquals("source-name", captor.getValue().sourceEnvironmentName());
+        Assert.assertEquals("destination-id", captor.getValue().destinationEnvironmentId());
+        Assert.assertEquals("destination-name", captor.getValue().destinationEnvironmentName());
     }
 
     @Test
@@ -60,29 +61,32 @@ public class EBSwapEnvironmentCNAMEsStepTest {
         step.setDestinationEnvironmentCNAME("destination-cname");
         EBSwapEnvironmentCNAMEsStep.Execution execution = new EBSwapEnvironmentCNAMEsStep.Execution(step, context);
 
-        AWSElasticBeanstalk client = EBTestingUtils.setupElasticBeanstalkClient();
-        DescribeEnvironmentsResult result = new DescribeEnvironmentsResult();
-        EnvironmentDescription sourceEnv = new EnvironmentDescription();
-        sourceEnv.setCNAME("source-cname");
-        sourceEnv.setEnvironmentId("source-id");
-        sourceEnv.setEnvironmentName("source-name");
+        ElasticBeanstalkClient client = EBTestingUtils.setupElasticBeanstalkClient();
+        EnvironmentDescription sourceEnv = EnvironmentDescription.builder()
+                .cname("source-cname")
+                .environmentId("source-id")
+                .environmentName("source-name")
+                .build();
 
-        EnvironmentDescription destinationEnv = new EnvironmentDescription();
-        destinationEnv.setCNAME("destination-cname");
-        destinationEnv.setEnvironmentId("destination-id");
-        destinationEnv.setEnvironmentName("destination-name");
+        EnvironmentDescription destinationEnv = EnvironmentDescription.builder()
+                .cname("destination-cname")
+                .environmentId("destination-id")
+                .environmentName("destination-name")
+                .build();
 
-        result.setEnvironments(Arrays.asList(sourceEnv, destinationEnv));
-        Mockito.when(client.describeEnvironments(Mockito.any())).thenReturn(result);
+        DescribeEnvironmentsResponse result = DescribeEnvironmentsResponse.builder()
+                .environments(Arrays.asList(sourceEnv, destinationEnv))
+                .build();
+        Mockito.when(client.describeEnvironments(Mockito.any(DescribeEnvironmentsRequest.class))).thenReturn(result);
 
 
         execution.run();
 
 
         Mockito.verify(client, Mockito.times(1)).swapEnvironmentCNAMEs(captor.capture());
-        Assert.assertEquals("source-id", captor.getValue().getSourceEnvironmentId());
-        Assert.assertEquals("source-name", captor.getValue().getSourceEnvironmentName());
-        Assert.assertEquals("destination-id", captor.getValue().getDestinationEnvironmentId());
-        Assert.assertEquals("destination-name", captor.getValue().getDestinationEnvironmentName());
+        Assert.assertEquals("source-id", captor.getValue().sourceEnvironmentId());
+        Assert.assertEquals("source-name", captor.getValue().sourceEnvironmentName());
+        Assert.assertEquals("destination-id", captor.getValue().destinationEnvironmentId());
+        Assert.assertEquals("destination-name", captor.getValue().destinationEnvironmentName());
     }
 }
