@@ -22,6 +22,11 @@
 package de.taimos.pipeline.aws;
 
 import hudson.EnvVars;
+
+import java.util.HashMap;
+import java.util.Map;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import software.amazon.awssdk.http.apache.ProxyConfiguration;
 
@@ -32,6 +37,36 @@ import static org.assertj.core.api.Assertions.assertThat;
  * case for case while both SDKs are present.
  */
 public class ProxyV2Test {
+
+	private static final String[] PROXY_PROPERTIES = {
+			"https.proxyHost", "https.proxyPort", "https.proxyUser", "https.proxyPassword", "http.nonProxyHosts"
+	};
+
+	private final Map<String, String> savedProperties = new HashMap<>();
+
+	/**
+	 * buildV2ProxyConfiguration deliberately reads the JVM proxy properties, so every case here has
+	 * to start from a known state: a machine whose Maven JVM carries -Dhttps.proxyHost (the usual
+	 * way to put Maven behind a corporate proxy) would otherwise fail the cases asserting no proxy.
+	 */
+	@Before
+	public void clearProxyProperties() {
+		for (String key : PROXY_PROPERTIES) {
+			this.savedProperties.put(key, System.getProperty(key));
+			System.clearProperty(key);
+		}
+	}
+
+	@After
+	public void restoreProxyProperties() {
+		for (Map.Entry<String, String> entry : this.savedProperties.entrySet()) {
+			if (entry.getValue() == null) {
+				System.clearProperty(entry.getKey());
+			} else {
+				System.setProperty(entry.getKey(), entry.getValue());
+			}
+		}
+	}
 
 	@Test
 	public void shouldNotChangeIfNotPresent() throws Exception {
@@ -147,17 +182,45 @@ public class ProxyV2Test {
 		System.setProperty("https.proxyHost", "sysprop.corp");
 		System.setProperty("https.proxyPort", "3129");
 		System.setProperty("http.nonProxyHosts", "internal.corp|*.local");
-		try {
-			ProxyConfiguration config = de.taimos.pipeline.aws.ProxyConfiguration.buildV2ProxyConfiguration(new EnvVars());
 
-			assertThat(config.host()).isEqualTo("sysprop.corp");
-			assertThat(config.port()).isEqualTo(3129);
-			assertThat(config.nonProxyHosts()).containsExactlyInAnyOrder("internal.corp", "*.local");
-		} finally {
-			System.clearProperty("https.proxyHost");
-			System.clearProperty("https.proxyPort");
-			System.clearProperty("http.nonProxyHosts");
-		}
+		ProxyConfiguration config = de.taimos.pipeline.aws.ProxyConfiguration.buildV2ProxyConfiguration(new EnvVars());
+
+		assertThat(config.host()).isEqualTo("sysprop.corp");
+		assertThat(config.port()).isEqualTo(3129);
+		assertThat(config.nonProxyHosts()).containsExactlyInAnyOrder("internal.corp", "*.local");
+	}
+
+	/**
+	 * v1 leaves the port at -1 when only the host property is set and lets Apache resolve it
+	 * against the scheme (http, so 80). Defaulting to 443 here would dial http://proxy:443.
+	 */
+	@Test
+	public void systemPropertyProxyWithoutAPortLeavesThePortUnset() throws Exception {
+		System.setProperty("https.proxyHost", "sysprop.corp");
+
+		ProxyConfiguration config = de.taimos.pipeline.aws.ProxyConfiguration.buildV2ProxyConfiguration(new EnvVars());
+
+		assertThat(config.host()).isEqualTo("sysprop.corp");
+		assertThat(config.port()).isEqualTo(-1);
+	}
+
+	/**
+	 * v1 resolves each proxy field from its own system property, so credentials still apply when
+	 * the host came from elsewhere. Without this a controller using HTTPS_PROXY plus
+	 * -Dhttps.proxyUser would start getting 407s from the proxy on migrated steps only.
+	 */
+	@Test
+	public void systemPropertyCredentialsApplyToAProxyFromTheEnvironment() throws Exception {
+		System.setProperty("https.proxyUser", "sysuser");
+		System.setProperty("https.proxyPassword", "syspass");
+		EnvVars vars = new EnvVars();
+		vars.put(de.taimos.pipeline.aws.ProxyConfiguration.HTTPS_PROXY, "http://fromenv.corp:8888/");
+
+		ProxyConfiguration config = de.taimos.pipeline.aws.ProxyConfiguration.buildV2ProxyConfiguration(vars);
+
+		assertThat(config.host()).isEqualTo("fromenv.corp");
+		assertThat(config.username()).isEqualTo("sysuser");
+		assertThat(config.password()).isEqualTo("syspass");
 	}
 
 	/**
@@ -166,17 +229,13 @@ public class ProxyV2Test {
 	@Test
 	public void environmentVariablesWinOverSystemProperties() throws Exception {
 		System.setProperty("https.proxyHost", "sysprop.corp");
-		try {
-			EnvVars vars = new EnvVars();
-			vars.put(de.taimos.pipeline.aws.ProxyConfiguration.HTTPS_PROXY, "http://fromenv.corp:8888/");
+		EnvVars vars = new EnvVars();
+		vars.put(de.taimos.pipeline.aws.ProxyConfiguration.HTTPS_PROXY, "http://fromenv.corp:8888/");
 
-			ProxyConfiguration config = de.taimos.pipeline.aws.ProxyConfiguration.buildV2ProxyConfiguration(vars);
+		ProxyConfiguration config = de.taimos.pipeline.aws.ProxyConfiguration.buildV2ProxyConfiguration(vars);
 
-			assertThat(config.host()).isEqualTo("fromenv.corp");
-			assertThat(config.port()).isEqualTo(8888);
-		} finally {
-			System.clearProperty("https.proxyHost");
-		}
+		assertThat(config.host()).isEqualTo("fromenv.corp");
+		assertThat(config.port()).isEqualTo(8888);
 	}
 
 	/**

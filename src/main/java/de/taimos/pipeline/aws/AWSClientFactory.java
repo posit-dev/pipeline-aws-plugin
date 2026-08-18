@@ -378,7 +378,9 @@ public class AWSClientFactory implements Serializable {
 		return getV2Region(vars);
 	}
 
-	private static final Pattern S3_DASH_ENDPOINT = Pattern.compile("^s3[-.]([a-z0-9-]+)$");
+	// Mirrors v1's S3_ENDPOINT_PATTERN, which matches the whole fragment, so bucket-prefixed hosts
+	// such as bucket.s3-eu-west-1.amazonaws.com resolve the same way as s3-eu-west-1.amazonaws.com.
+	private static final Pattern S3_ENDPOINT = Pattern.compile("^(?:.+\\.)?s3[-.]([a-z0-9-]+)$");
 
 	/**
 	 * Mirrors v1's {@code AwsHostNameUtils.parseRegion} closely enough for the endpoints it
@@ -408,18 +410,24 @@ public class AWSClientFactory implements Serializable {
 			return null;
 		}
 
+		// Checked before the generic split, matching v1's ordering, so that both s3-eu-west-1 and
+		// bucket.s3-eu-west-1 yield eu-west-1 rather than the literal s3-eu-west-1 fragment.
+		Matcher s3 = S3_ENDPOINT.matcher(remainder);
+		if (s3.matches()) {
+			return software.amazon.awssdk.regions.Region.of(s3.group(1));
+		}
+
 		int lastDot = remainder.lastIndexOf('.');
 		if (lastDot < 0) {
-			// A single segment: either the dash-style S3 endpoint (s3-eu-west-1) or a global
-			// endpoint such as sns.amazonaws.com, which v1 resolves to us-east-1.
-			Matcher dashed = S3_DASH_ENDPOINT.matcher(remainder);
-			if (dashed.matches()) {
-				return software.amazon.awssdk.regions.Region.of(dashed.group(1));
-			}
+			// A global endpoint such as sns.amazonaws.com, which v1 resolves to us-east-1.
 			return software.amazon.awssdk.regions.Region.US_EAST_1;
 		}
 
 		String region = remainder.substring(lastDot + 1);
+		if (region.isEmpty()) {
+			// Region.of rejects a blank id; fall through to the usual chain instead of throwing.
+			return null;
+		}
 		if ("us-gov".equals(region)) {
 			// v1 special-cases the bare us-gov fragment, as in iam.us-gov.amazonaws.com
 			return software.amazon.awssdk.regions.Region.US_GOV_WEST_1;

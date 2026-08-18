@@ -170,14 +170,19 @@ class ProxyConfiguration {
 			if (host != null && !host.isEmpty()) {
 				settings.host = host;
 				String port = System.getProperty("https.proxyPort");
-				settings.port = port != null ? Integer.parseInt(port) : HTTPS_PORT;
-				if (settings.username == null) {
-					settings.username = System.getProperty("https.proxyUser");
-				}
-				if (settings.password == null) {
-					settings.password = System.getProperty("https.proxyPassword");
-				}
+				// Left unset when the property is absent: v1 leaves ClientConfiguration's port at
+				// -1 and lets Apache resolve it against the scheme, which is http here, so port 80.
+				// Defaulting to 443 would dial http://proxy:443.
+				settings.port = port != null ? Integer.parseInt(port) : UNSET_PORT;
 			}
+		}
+		// v1 resolves each proxy field from its own system property independently of the others, so
+		// credentials still apply when the host came from the Jenkins configuration or HTTPS_PROXY.
+		if (settings.username == null) {
+			settings.username = System.getProperty("https.proxyUser");
+		}
+		if (settings.password == null) {
+			settings.password = System.getProperty("https.proxyPassword");
 		}
 		if (settings.nonProxyHosts == null) {
 			String nonProxyHosts = System.getProperty("http.nonProxyHosts");
@@ -227,9 +232,11 @@ class ProxyConfiguration {
 	 * v1 sets host, port, credentials and non-proxy hosts independently; v2 wants a single endpoint
 	 * URI, so the parts are collected first and assembled at the end.
 	 */
+	private static final int UNSET_PORT = -1;
+
 	private static final class V2ProxySettings {
 		private String host;
-		private int port;
+		private int port = UNSET_PORT;
 		private String username;
 		private String password;
 		private Set<String> nonProxyHosts;
@@ -250,7 +257,8 @@ class ProxyConfiguration {
 			// proxy protocol at its HTTP default, so HTTPS_PROXY=https://proxy:8080 means a plain
 			// HTTP connection to the proxy. Hard-coding http here keeps that.
 			if (this.host != null && !this.host.isEmpty()) {
-				builder.endpoint(URI.create("http://" + this.host + ":" + this.port));
+				String authority = this.port == UNSET_PORT ? this.host : this.host + ":" + this.port;
+				builder.endpoint(URI.create("http://" + authority));
 			}
 			if (this.username != null) {
 				builder.username(this.username);

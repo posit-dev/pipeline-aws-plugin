@@ -176,6 +176,14 @@ public class AWSClientFactoryV2Test {
 		// v1 takes the segment without validating it; matched here rather than "corrected"
 		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://weird.regional.amazonaws.com"))
 				.isEqualTo(Region.of("regional"));
+		// bucket-prefixed dash-style S3 endpoint: v1 matches the s3 fragment anywhere in the host
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://bucket.s3-eu-west-1.amazonaws.com"))
+				.isEqualTo(Region.EU_WEST_1);
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://bucket.s3.eu-west-1.amazonaws.com"))
+				.isEqualTo(Region.EU_WEST_1);
+		// an empty segment is not a region id; falls through to the chain rather than throwing
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://svc..amazonaws.com"))
+				.isEqualTo(AWSClientFactory.getV2Region(vars));
 	}
 
 	/**
