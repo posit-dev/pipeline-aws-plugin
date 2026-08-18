@@ -172,7 +172,10 @@ public class CreateDeployStep extends Step {
 
 			listener.getLogger().format("DeploymentId (%s) %n", deployment.deploymentId());
 
-			if (step.waitForCompletion) {
+			// waitForCompletion is an optional Boolean, so it is null unless the pipeline sets it;
+			// dereferencing it directly threw a NullPointerException for every caller that omitted
+			// it. Predates the SDK migration - the README examples all pass the flag.
+			if (Boolean.TRUE.equals(step.waitForCompletion)) {
 				new DeployUtils().waitDeployment(deployment.deploymentId(), listener, client);
 			}
 
@@ -187,7 +190,14 @@ public class CreateDeployStep extends Step {
 			if (StringUtils.isEmpty(fileExistsBehavior)) {
 				return FileExistsBehavior.DISALLOW;
 			}
-			return FileExistsBehavior.fromValue(fileExistsBehavior);
+			FileExistsBehavior behavior = FileExistsBehavior.fromValue(fileExistsBehavior);
+			// v1's fromValue throws on an unrecognised value; v2 returns this sentinel, whose value
+			// is null, so without this check a typo would be sent to AWS as fileExistsBehavior=null
+			// and fail there with an opaque error instead of naming the bad input.
+			if (behavior == FileExistsBehavior.UNKNOWN_TO_SDK_VERSION) {
+				throw new IllegalArgumentException("Cannot create enum from " + fileExistsBehavior + " value!");
+			}
+			return behavior;
 		}
 
 		private boolean isEcsOrLambdaDeployment() {
