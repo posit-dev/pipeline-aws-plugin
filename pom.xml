@@ -128,13 +128,29 @@
         </dependency>
         <!--
             TRANSITIONAL: the com.sun.xml.bind:jaxb-impl exclusions on the aws-java-sdk (v1)
-            dependencies below work around a RequireUpperBoundDeps failure. SDK v1's
-            aws-java-sdk-minimal pulls jaxb-impl 2.3.9 (via the jaxb plugin) while jackson2-api
-            pulls 4.0.9 via jakarta-xml-bind-api. Only the library artifact is excluded; the jaxb
-            plugin itself must stay on the dependency graph because jackson2-api requires it at
-            runtime. Remove these exclusions together with the v1 dependencies once the migration
-            to the AWS SDK for Java 2.x is complete. Any new aws-java-sdk-* dependency added
-            before then needs the same exclusion.
+            dependencies below work around a maven-enforcer RequireUpperBoundDeps failure.
+
+            Without them, two versions of com.sun.xml.bind:jaxb-impl are reachable, both
+            underneath the SDK v1 subtrees via aws-java-sdk-minimal -> jackson2-api: 2.3.9
+            through io.jenkins.plugins:jaxb, and 4.0.9 through
+            io.jenkins.plugins:jakarta-xml-bind-api. Maven resolves the nearer 2.3.9, which is
+            lower than the 4.0.9 another path requires, and the rule fails.
+
+            Effect of the exclusions: jaxb-impl leaves the Maven classpath altogether (confirmed
+            with mvn dependency:tree -Dincludes=com.sun.xml.bind:jaxb-impl, which matches
+            nothing). That is fine because no code here compiles against it. The
+            io.jenkins.plugins:jaxb plugin itself stays on the graph - excluding the plugin
+            instead leaves jackson2-api unable to load and every SDK v1 plugin fails to start,
+            which InjectedTest catches even though the functional tests still pass. At runtime
+            Jenkins supplies the implementation from the jaxb plugin.
+
+            Remove these exclusions together with the v1 dependencies once the migration to the
+            AWS SDK for Java 2.x is complete. Two caveats for whoever does that: any new
+            aws-java-sdk-* dependency added before then needs the same exclusion, and
+            org.jenkins-ci.plugins:aws-credentials also depends on SDK v1. That path is
+            currently deduplicated by the nearer direct declarations here, so once those are
+            gone the same conflict can resurface through aws-credentials and would need the
+            exclusion declared there instead.
         -->
         <dependency>
             <groupId>org.jenkins-ci.plugins.aws-java-sdk</groupId>
