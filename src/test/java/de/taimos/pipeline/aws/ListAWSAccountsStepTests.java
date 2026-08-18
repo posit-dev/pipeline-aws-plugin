@@ -21,12 +21,14 @@
 
 package de.taimos.pipeline.aws;
 
-import com.amazonaws.services.organizations.AWSOrganizations;
-import com.amazonaws.services.organizations.model.Account;
-import com.amazonaws.services.organizations.model.ListAccountsForParentRequest;
-import com.amazonaws.services.organizations.model.ListAccountsForParentResult;
-import com.amazonaws.services.organizations.model.ListAccountsRequest;
-import com.amazonaws.services.organizations.model.ListAccountsResult;
+import software.amazon.awssdk.services.organizations.OrganizationsClient;
+import software.amazon.awssdk.services.organizations.model.Account;
+import software.amazon.awssdk.services.organizations.model.ListAccountsForParentRequest;
+import software.amazon.awssdk.services.organizations.model.ListAccountsForParentResponse;
+import software.amazon.awssdk.services.organizations.model.ListAccountsRequest;
+import software.amazon.awssdk.services.organizations.model.ListAccountsResponse;
+import software.amazon.awssdk.services.organizations.paginators.ListAccountsForParentIterable;
+import software.amazon.awssdk.services.organizations.paginators.ListAccountsIterable;
 import hudson.model.Run;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
@@ -51,31 +53,42 @@ public class ListAWSAccountsStepTests {
 
 	@Rule
 	public JenkinsRule jenkinsRule = new JenkinsRule();
-	private AWSOrganizations organizations;
+	private OrganizationsClient organizations;
 
 	@Before
 	public void setupSdk() throws Exception {
-		this.organizations = Mockito.mock(AWSOrganizations.class);
-		AWSClientFactory.setFactoryDelegate((x) -> this.organizations);
+		this.organizations = Mockito.mock(OrganizationsClient.class);
+		AWSClientFactory.setV2FactoryDelegate((x) -> this.organizations);
+
+		// The paginator methods are defaults on the client interface, so a mock returns null for
+		// them. Handing back a real paginator over the mock keeps the assertions below meaningful:
+		// the SDK's own paging logic issues the underlying calls, so what is captured is what the
+		// SDK really sends, including the token it carries between pages.
+		Mockito.when(this.organizations.listAccountsPaginator(Mockito.any(ListAccountsRequest.class)))
+				.thenAnswer(invocation -> new ListAccountsIterable(this.organizations, invocation.getArgument(0)));
+		Mockito.when(this.organizations.listAccountsForParentPaginator(Mockito.any(ListAccountsForParentRequest.class)))
+				.thenAnswer(invocation -> new ListAccountsForParentIterable(this.organizations, invocation.getArgument(0)));
 	}
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setFactoryDelegate(null);
+		AWSClientFactory.setV2FactoryDelegate(null);
 	}
 
 	private static Account account(String id, String name) {
-		return new Account()
-				.withId(id)
-				.withArn("arn:aws:organizations::123456789012:account/o-exampleorg/" + id)
-				.withName(name)
-				.withStatus("ACTIVE");
+		return Account.builder()
+				.id(id)
+				.arn("arn:aws:organizations::123456789012:account/o-exampleorg/" + id)
+				.name(name)
+				.status("ACTIVE")
+				.build();
 	}
 
 	@Test
 	public void listAccountsExposesEveryKey() throws Exception {
-		Mockito.when(this.organizations.listAccounts(Mockito.any())).thenReturn(new ListAccountsResult()
-				.withAccounts(account("111111111111", "My Account"))
+		Mockito.when(this.organizations.listAccounts(Mockito.any(ListAccountsRequest.class))).thenReturn(ListAccountsResponse.builder()
+				.accounts(account("111111111111", "My Account"))
+				.build()
 		);
 
 		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "listAccountsTest");
@@ -108,12 +121,14 @@ public class ListAWSAccountsStepTests {
 	 */
 	@Test
 	public void listAccountsPropagatesPagingToken() throws Exception {
-		Mockito.when(this.organizations.listAccounts(Mockito.any()))
-				.thenReturn(new ListAccountsResult()
-						.withAccounts(account("111111111111", "First"))
-						.withNextToken("next"))
-				.thenReturn(new ListAccountsResult()
-						.withAccounts(account("222222222222", "Second")));
+		Mockito.when(this.organizations.listAccounts(Mockito.any(ListAccountsRequest.class)))
+				.thenReturn(ListAccountsResponse.builder()
+						.accounts(account("111111111111", "First"))
+						.nextToken("next")
+						.build())
+				.thenReturn(ListAccountsResponse.builder()
+						.accounts(account("222222222222", "Second"))
+						.build());
 
 		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "listAccountsPagingTest");
 		job.setDefinition(new CpsFlowDefinition(""
@@ -129,18 +144,20 @@ public class ListAWSAccountsStepTests {
 		ArgumentCaptor<ListAccountsRequest> captor = ArgumentCaptor.forClass(ListAccountsRequest.class);
 		Mockito.verify(this.organizations, Mockito.times(2)).listAccounts(captor.capture());
 		List<ListAccountsRequest> requests = captor.getAllValues();
-		assertThat(requests.get(0).getNextToken()).isNull();
-		assertThat(requests.get(1).getNextToken()).isEqualTo("next");
+		assertThat(requests.get(0).nextToken()).isNull();
+		assertThat(requests.get(1).nextToken()).isEqualTo("next");
 	}
 
 	@Test
 	public void listAccountsForParentPropagatesParentAndPagingToken() throws Exception {
-		Mockito.when(this.organizations.listAccountsForParent(Mockito.any()))
-				.thenReturn(new ListAccountsForParentResult()
-						.withAccounts(account("111111111111", "First"))
-						.withNextToken("next"))
-				.thenReturn(new ListAccountsForParentResult()
-						.withAccounts(account("222222222222", "Second")));
+		Mockito.when(this.organizations.listAccountsForParent(Mockito.any(ListAccountsForParentRequest.class)))
+				.thenReturn(ListAccountsForParentResponse.builder()
+						.accounts(account("111111111111", "First"))
+						.nextToken("next")
+						.build())
+				.thenReturn(ListAccountsForParentResponse.builder()
+						.accounts(account("222222222222", "Second"))
+						.build());
 
 		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "listAccountsParentTest");
 		job.setDefinition(new CpsFlowDefinition(""
@@ -159,9 +176,9 @@ public class ListAWSAccountsStepTests {
 		ArgumentCaptor<ListAccountsForParentRequest> captor = ArgumentCaptor.forClass(ListAccountsForParentRequest.class);
 		Mockito.verify(this.organizations, Mockito.times(2)).listAccountsForParent(captor.capture());
 		List<ListAccountsForParentRequest> requests = captor.getAllValues();
-		assertThat(requests.get(0).getParentId()).isEqualTo("ou-1234");
-		assertThat(requests.get(0).getNextToken()).isNull();
-		assertThat(requests.get(1).getParentId()).isEqualTo("ou-1234");
-		assertThat(requests.get(1).getNextToken()).isEqualTo("next");
+		assertThat(requests.get(0).parentId()).isEqualTo("ou-1234");
+		assertThat(requests.get(0).nextToken()).isNull();
+		assertThat(requests.get(1).parentId()).isEqualTo("ou-1234");
+		assertThat(requests.get(1).nextToken()).isEqualTo("next");
 	}
 }
