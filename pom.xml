@@ -276,6 +276,17 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <!--
+            AWS SDK for Java 2.x. During the migration this sits alongside the v1 dependencies
+            above; the v1 ones are removed once every step has been converted. aws-java-sdk2-core
+            bundles auth, regions, retries, profiles, sts and the Apache sync HTTP client, so the
+            core client plumbing needs nothing else. Service modules are added as each service is
+            migrated.
+        -->
+        <dependency>
+            <groupId>io.jenkins.plugins.aws-java-sdk2</groupId>
+            <artifactId>aws-java-sdk2-core</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>credentials</artifactId>

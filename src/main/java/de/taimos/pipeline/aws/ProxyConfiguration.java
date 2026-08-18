@@ -31,6 +31,11 @@ import com.google.common.base.Joiner;
 import hudson.EnvVars;
 import jenkins.model.Jenkins;
 
+import java.net.URI;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
 class ProxyConfiguration {
 
 	static final String HTTP_PROXY = "HTTP_PROXY";
@@ -114,6 +119,103 @@ class ProxyConfiguration {
 			} else {
 				config.setProxyPort(defaultPort);
 			}
+		}
+	}
+
+	/**
+	 * Builds the AWS SDK v2 equivalent of {@link #configure(EnvVars, ClientConfiguration)} for the
+	 * Apache (synchronous) HTTP client.
+	 *
+	 * The v1 path branches on {@code ClientConfiguration.getProtocol()}, but nothing in this plugin
+	 * ever calls {@code setProtocol} and the v1 default is HTTPS, so the HTTP branch there is
+	 * unreachable and only HTTPS_PROXY/https_proxy is ever consulted. That behaviour is preserved
+	 * here deliberately: honouring HTTP_PROXY as well would newly route traffic through a proxy for
+	 * users who set only that variable.
+	 */
+	static software.amazon.awssdk.http.apache.ProxyConfiguration buildV2ProxyConfiguration(EnvVars vars) {
+		V2ProxySettings settings = new V2ProxySettings();
+
+		useJenkinsProxyV2(settings);
+
+		String env = vars.get(HTTPS_PROXY, vars.get(HTTPS_PROXY_LC));
+		if (env != null) {
+			configureProxyV2(settings, env, HTTPS_PORT);
+		}
+
+		String noProxy = vars.get(NO_PROXY, vars.get(NO_PROXY_LC));
+		if (noProxy != null) {
+			settings.nonProxyHosts = new HashSet<>(Arrays.asList(noProxy.split(",")));
+		}
+
+		return settings.toProxyConfiguration();
+	}
+
+	private static void useJenkinsProxyV2(V2ProxySettings settings) {
+		Jenkins jenkins = Jenkins.getInstanceOrNull();
+		if (jenkins != null) {
+			hudson.ProxyConfiguration proxyConfiguration = jenkins.proxy;
+			if (proxyConfiguration != null) {
+				settings.host = proxyConfiguration.name;
+				settings.port = proxyConfiguration.port;
+				settings.username = proxyConfiguration.getUserName();
+				settings.password = proxyConfiguration.getPassword();
+
+				if (proxyConfiguration.getNoProxyHost() != null) {
+					settings.nonProxyHosts = new HashSet<>(Arrays.asList(proxyConfiguration.getNoProxyHost().split("[ \t\n,|]+")));
+				}
+			}
+		}
+	}
+
+	private static void configureProxyV2(V2ProxySettings settings, String env, int defaultPort) {
+		Pattern pattern = Pattern.compile(PROXY_PATTERN);
+		Matcher matcher = pattern.matcher(env);
+		if (matcher.matches()) {
+			if (matcher.group(3) != null) {
+				settings.username = matcher.group(3);
+			}
+			if (matcher.group(5) != null) {
+				settings.password = matcher.group(5);
+			}
+			settings.scheme = matcher.group(1);
+			settings.host = matcher.group(6);
+			if (matcher.group(8) != null) {
+				settings.port = Integer.parseInt(matcher.group(8));
+			} else {
+				settings.port = defaultPort;
+			}
+		}
+	}
+
+	/**
+	 * v1 sets host, port, credentials and non-proxy hosts independently; v2 wants a single endpoint
+	 * URI, so the parts are collected first and assembled at the end.
+	 */
+	private static final class V2ProxySettings {
+		private String scheme = "http";
+		private String host;
+		private int port;
+		private String username;
+		private String password;
+		private Set<String> nonProxyHosts;
+
+		private software.amazon.awssdk.http.apache.ProxyConfiguration toProxyConfiguration() {
+			software.amazon.awssdk.http.apache.ProxyConfiguration.Builder builder =
+					software.amazon.awssdk.http.apache.ProxyConfiguration.builder();
+
+			if (this.host != null && !this.host.isEmpty()) {
+				builder.endpoint(URI.create(this.scheme + "://" + this.host + ":" + this.port));
+			}
+			if (this.username != null) {
+				builder.username(this.username);
+			}
+			if (this.password != null) {
+				builder.password(this.password);
+			}
+			if (this.nonProxyHosts != null) {
+				builder.nonProxyHosts(this.nonProxyHosts);
+			}
+			return builder.build();
 		}
 	}
 

@@ -26,13 +26,18 @@ import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.BasicSessionCredentials;
 import com.amazonaws.auth.STSSessionCredentials;
 
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+
 import java.io.Serializable;
 
 /*
  * Serialize credentials so that they can be passed back to master
  *
  */
-public class SerializableAWSCredentialsProvider implements AWSCredentialsProvider, Serializable {
+public class SerializableAWSCredentialsProvider implements AWSCredentialsProvider,
+		software.amazon.awssdk.auth.credentials.AwsCredentialsProvider, Serializable {
 	private String accessKey;
 	private String secretAccessKey;
 	private String sessionToken;
@@ -60,6 +65,21 @@ public class SerializableAWSCredentialsProvider implements AWSCredentialsProvide
 	}
 
 	public void refresh() {}
+
+	/**
+	 * The SDK v2 half of this provider. Implementing both interfaces lets credentials resolved on an
+	 * agent be handed to either SDK while the migration is in progress; the v1 half goes away with
+	 * the v1 dependencies.
+	 *
+	 * v2 collapses v1's BasicSessionCredentials and STSSessionCredentials into AwsSessionCredentials.
+	 */
+	@Override
+	public AwsCredentials resolveCredentials() {
+		if (this.sessionToken != null) {
+			return AwsSessionCredentials.create(this.accessKey, this.secretAccessKey, this.sessionToken);
+		}
+		return AwsBasicCredentials.create(this.accessKey, this.secretAccessKey);
+	}
 
 	private static final long serialVersionUID = 1L;
 }

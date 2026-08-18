@@ -40,8 +40,20 @@ import org.jenkinsci.plugins.workflow.steps.StepContext;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
 
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.client.builder.SdkSyncClientBuilder;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
+import software.amazon.awssdk.http.apache.ApacheHttpClient;
+import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
+
 import java.io.IOException;
 import java.io.Serializable;
+import java.net.URI;
+import java.time.Duration;
 
 
 public class AWSClientFactory implements Serializable {
@@ -58,6 +70,7 @@ public class AWSClientFactory implements Serializable {
 	static final String AWS_SDK_RETRIES = "AWS_SDK_RETRIES";
 	static final String AWS_PIPELINE_STEPS_FROM_NODE = "AWS_PIPELINE_STEPS_FROM_NODE";
 	private static AWSClientFactoryDelegate factoryDelegate;
+	private static AWSClientFactoryV2Delegate v2FactoryDelegate;
 
 
 	private AWSClientFactory() {
@@ -194,5 +207,158 @@ public class AWSClientFactory implements Serializable {
 	@Restricted(NoExternalUse.class)
 	public static void setFactoryDelegate(AWSClientFactoryDelegate factoryDelegate) {
 		AWSClientFactory.factoryDelegate = factoryDelegate;
+	}
+
+	@Restricted(NoExternalUse.class)
+	public static void setV2FactoryDelegate(AWSClientFactoryV2Delegate v2FactoryDelegate) {
+		AWSClientFactory.v2FactoryDelegate = v2FactoryDelegate;
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// AWS SDK v2. These overloads sit beside the v1 ones above while services are migrated one at a
+	// time; the v1 half is deleted once the last step has moved. They resolve by argument type: v1
+	// builders are AwsSyncClientBuilder, v2 builders are AwsClientBuilder, so there is no ambiguity.
+	// ---------------------------------------------------------------------------------------------
+
+	@SuppressWarnings("unchecked")
+	public static <B extends software.amazon.awssdk.awscore.client.builder.AwsClientBuilder<B, C>, C> C create(B clientBuilder, StepContext context) {
+		if (v2FactoryDelegate != null) {
+			return (C) v2FactoryDelegate.create(clientBuilder);
+		}
+		try {
+			return configureV2Builder(clientBuilder, context, context.get(EnvVars.class)).build();
+		} catch (Exception e) {
+			throw new IllegalArgumentException(e);
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	public static <B extends software.amazon.awssdk.awscore.client.builder.AwsClientBuilder<B, C>, C> C create(B clientBuilder, StepContext context, EnvVars vars) {
+		if (v2FactoryDelegate != null) {
+			return (C) v2FactoryDelegate.create(clientBuilder);
+		}
+		return configureV2Builder(clientBuilder, context, vars).build();
+	}
+
+	@SuppressWarnings("unchecked")
+	public static <B extends software.amazon.awssdk.awscore.client.builder.AwsClientBuilder<B, C>, C> C create(B clientBuilder, EnvVars vars) {
+		if (v2FactoryDelegate != null) {
+			return (C) v2FactoryDelegate.create(clientBuilder);
+		}
+		return configureV2Builder(clientBuilder, null, vars).build();
+	}
+
+	public static <B extends software.amazon.awssdk.awscore.client.builder.AwsClientBuilder<B, C>, C> B configureV2Builder(final B clientBuilder, StepContext context, final EnvVars vars) {
+		if (clientBuilder == null) {
+			throw new IllegalArgumentException("ClientBuilder must not be null");
+		}
+
+		// v1 treats region and endpoint as mutually exclusive, but v2 needs a region for request
+		// signing even when the endpoint is overridden, so the region is always resolved here.
+		clientBuilder.region(getV2Region(vars));
+		if (StringUtils.isNotBlank(vars.get(AWS_ENDPOINT_URL))) {
+			clientBuilder.endpointOverride(URI.create(vars.get(AWS_ENDPOINT_URL)));
+		}
+
+		clientBuilder.credentialsProvider(getV2Credentials(vars, context));
+		clientBuilder.overrideConfiguration(getV2OverrideConfiguration(vars));
+
+		if (clientBuilder instanceof SdkSyncClientBuilder) {
+			((SdkSyncClientBuilder<?, ?>) clientBuilder).httpClient(getV2SyncHttpClient(vars));
+		}
+
+		return clientBuilder;
+	}
+
+	static ClientOverrideConfiguration getV2OverrideConfiguration(EnvVars vars) {
+		// v1 counts retries after the initial call (maxErrorRetry = 10 means 11 total attempts),
+		// while v2 maxAttempts includes it, so the value is carried over as retries + 1 to keep the
+		// number of calls against AWS identical.
+		int retries = Integer.parseInt(vars.get(AWS_SDK_RETRIES, "10"));
+		return ClientOverrideConfiguration.builder()
+				.retryStrategy(b -> b.maxAttempts(retries + 1))
+				.build();
+	}
+
+	static software.amazon.awssdk.http.SdkHttpClient getV2SyncHttpClient(EnvVars vars) {
+		int socketTimeout = Integer.parseInt(vars.get(AWS_SDK_SOCKET_TIMEOUT, "50000"));
+		return ApacheHttpClient.builder()
+				.socketTimeout(Duration.ofMillis(socketTimeout))
+				.proxyConfiguration(ProxyConfiguration.buildV2ProxyConfiguration(vars))
+				.build();
+	}
+
+	static AwsCredentialsProvider getV2Credentials(EnvVars vars, StepContext context) {
+		AwsCredentialsProvider provider = handleV2StaticCredentials(vars);
+		if (provider != null) {
+			return provider;
+		}
+
+		provider = handleV2Profile(vars);
+		if (provider != null) {
+			return provider;
+		}
+
+		if (context != null) {
+			if (PluginImpl.getInstance().isEnableCredentialsFromNode() || Boolean.valueOf(vars.get(AWS_PIPELINE_STEPS_FROM_NODE))) {
+				try {
+					return AWSClientFactory.getV2CredentialsFromNode(context, vars);
+				} catch (Exception e) {
+					throw new RuntimeException("Unable to retrieve credentials from node.");
+				}
+			}
+		}
+
+		return DefaultCredentialsProvider.create();
+	}
+
+	private static AwsCredentialsProvider getV2CredentialsFromNode(StepContext context, EnvVars envVars) throws IOException, InterruptedException {
+		FilePath ws = context.get(FilePath.class);
+		TaskListener listener = context.get(TaskListener.class);
+		// SerializableAWSCredentialsProvider implements both SDKs' provider interfaces.
+		return ws.act(new AWSCredentialsProviderCallable(listener));
+	}
+
+	private static AwsCredentialsProvider handleV2Profile(EnvVars vars) {
+		String profile = vars.get(AWS_PROFILE, vars.get(AWS_DEFAULT_PROFILE));
+		if (profile != null) {
+			return software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider.create(profile);
+		}
+		return null;
+	}
+
+	private static AwsCredentialsProvider handleV2StaticCredentials(EnvVars vars) {
+		String accessKey = vars.get(AWS_ACCESS_KEY_ID);
+		String secretAccessKey = vars.get(AWS_SECRET_ACCESS_KEY);
+		if (accessKey != null && secretAccessKey != null) {
+			String sessionToken = vars.get(AWS_SESSION_TOKEN);
+			if (sessionToken != null) {
+				return StaticCredentialsProvider.create(AwsSessionCredentials.create(accessKey, secretAccessKey, sessionToken));
+			}
+			return StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretAccessKey));
+		}
+		return null;
+	}
+
+	static software.amazon.awssdk.regions.Region getV2Region(EnvVars vars) {
+		if (vars.get(AWS_DEFAULT_REGION) != null) {
+			return software.amazon.awssdk.regions.Region.of(vars.get(AWS_DEFAULT_REGION));
+		}
+		if (vars.get(AWS_REGION) != null) {
+			return software.amazon.awssdk.regions.Region.of(vars.get(AWS_REGION));
+		}
+		if (System.getenv(AWS_DEFAULT_REGION) != null) {
+			return software.amazon.awssdk.regions.Region.of(System.getenv(AWS_DEFAULT_REGION));
+		}
+		if (System.getenv(AWS_REGION) != null) {
+			return software.amazon.awssdk.regions.Region.of(System.getenv(AWS_REGION));
+		}
+		try {
+			// v1's Regions.getCurrentRegion() returns null off-EC2; the v2 chain throws instead.
+			return new DefaultAwsRegionProviderChain().getRegion();
+		} catch (RuntimeException e) {
+			// v1 falls back to Regions.DEFAULT_REGION, which is us-west-2.
+			return software.amazon.awssdk.regions.Region.US_WEST_2;
+		}
 	}
 }
