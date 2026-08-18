@@ -52,11 +52,8 @@ public class AwsSdkResponseToJsonTest {
 				.withCapabilities("CAPABILITY_IAM")
 				.withCapabilitiesReason("because")
 				.withDeclaredTransforms("AWS::Serverless-2016-10-31")
-				.withParameters(new TemplateParameter()
-						.withDefaultValue("hello")
-						.withDescription("myParamDescription")
-						.withParameterKey("myParam")
-				);
+				// left unpopulated on purpose: the nested keys are pinned by CFNValidateStepTests
+				.withParameters(new TemplateParameter());
 
 		Map<String, Object> map = AwsSdkResponseToJson.convertToMap(result);
 

@@ -1102,8 +1102,8 @@ ebWaitOnEnvironmentHealth(
 * **Breaking**: requires Jenkins 2.541.1 or newer. The plugin's parent POM and plugin BOM were
   updated to the 2.541 baseline in preparation for the migration to the AWS SDK for Java 2.x
   ([#341](https://github.com/jenkinsci/pipeline-aws-plugin/issues/341),
-  [JENKINS-73650](https://issues.jenkins.io/browse/JENKINS-73650)). Controllers older than
-  2.541.1 must stay on 1.45.
+  [JENKINS-73650](https://issues.jenkins.io/browse/JENKINS-73650)). 1.45 is the last release usable
+  on controllers older than 2.541.1.
 
 ## 1.45
 ### Enhanced ECS and Lambda Deployment Support
