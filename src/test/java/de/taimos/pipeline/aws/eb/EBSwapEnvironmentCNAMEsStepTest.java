@@ -7,6 +7,7 @@ import software.amazon.awssdk.services.elasticbeanstalk.model.EnvironmentDescrip
 import software.amazon.awssdk.services.elasticbeanstalk.model.SwapEnvironmentCnamEsRequest;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
 import org.junit.Assert;
+import org.junit.After;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -27,6 +28,13 @@ public class EBSwapEnvironmentCNAMEsStepTest {
     @BeforeClass
     public static void setupStepContext() throws Exception {
         context = EBTestingUtils.setupStepContext();
+    }
+
+    @After
+    public void resetClient() {
+        // the factory delegate is static and would otherwise stay installed for whichever test
+        // class runs next in the same JVM, handing it a mocked ElasticBeanstalkClient
+        EBTestingUtils.resetElasticBeanstalkClient();
     }
 
     @Test

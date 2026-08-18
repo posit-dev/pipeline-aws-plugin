@@ -184,18 +184,27 @@ public class CreateDeployStep extends Step {
 		}
 
 		private FileExistsBehavior getFileExistsBehavior(String fileExistsBehavior) {
+			// Validated before the ECS/Lambda check so a bad value is rejected the same way for
+			// every compute platform. Deciding first would mean a typo hard-fails against a Server
+			// deployment group and is silently dropped against an ECS one - and since
+			// isEcsOrLambdaDeployment swallows every exception and returns false, a transient
+			// getDeploymentGroup failure would flip which of the two a pipeline gets.
+			final FileExistsBehavior behavior;
+			if (StringUtils.isEmpty(fileExistsBehavior)) {
+				behavior = FileExistsBehavior.DISALLOW;
+			} else {
+				behavior = FileExistsBehavior.fromValue(fileExistsBehavior);
+				// v1's fromValue throws on an unrecognised value; v2 returns this sentinel, whose
+				// value is null, so without this check a typo would be sent to AWS as
+				// fileExistsBehavior=null and fail there with an opaque error.
+				if (behavior == FileExistsBehavior.UNKNOWN_TO_SDK_VERSION) {
+					throw new IllegalArgumentException("Cannot create enum from " + fileExistsBehavior + " value!");
+				}
+			}
+
+			// ECS and Lambda deployments must not carry the parameter at all
 			if (isEcsOrLambdaDeployment()) {
 				return null;
-			}
-			if (StringUtils.isEmpty(fileExistsBehavior)) {
-				return FileExistsBehavior.DISALLOW;
-			}
-			FileExistsBehavior behavior = FileExistsBehavior.fromValue(fileExistsBehavior);
-			// v1's fromValue throws on an unrecognised value; v2 returns this sentinel, whose value
-			// is null, so without this check a typo would be sent to AWS as fileExistsBehavior=null
-			// and fail there with an opaque error instead of naming the bad input.
-			if (behavior == FileExistsBehavior.UNKNOWN_TO_SDK_VERSION) {
-				throw new IllegalArgumentException("Cannot create enum from " + fileExistsBehavior + " value!");
 			}
 			return behavior;
 		}

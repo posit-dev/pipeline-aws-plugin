@@ -1114,6 +1114,11 @@ ebWaitOnEnvironmentHealth(
   (`software.amazon.awssdk.services...Exception`) rather than `com.amazonaws...AmazonServiceException`,
   so build logs and anything scraping them will show different exception names and wording. The ELB
   steps also log the raw AWS response, whose rendering differs between the two SDKs.
+* `createDeployment` no longer fails with a `NullPointerException` when `waitForCompletion` is
+  omitted; the parameter is optional and now defaults to not waiting.
+* `createDeployment` again rejects an unrecognised `fileExistsBehavior` before calling AWS, with
+  the same `Cannot create enum from ... value!` message as before. The AWS SDK v2 does not fail on
+  unknown enum values, so without this the typo would have reached AWS as an empty value.
 
 ## 1.45
 ### Enhanced ECS and Lambda Deployment Support

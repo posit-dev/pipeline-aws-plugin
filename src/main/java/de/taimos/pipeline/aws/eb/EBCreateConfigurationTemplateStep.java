@@ -123,7 +123,7 @@ public class EBCreateConfigurationTemplateStep extends Step {
 			listener.getLogger().format(
 					"Created a new configuration template (%s) for the application (%s) %n",
 					result.templateName(),
-					result.templateName()
+					result.applicationName()
 			);
 
 			return null;

@@ -37,8 +37,11 @@ import software.amazon.awssdk.services.codedeploy.CodeDeployClient;
 import software.amazon.awssdk.services.codedeploy.model.CreateDeploymentRequest;
 import software.amazon.awssdk.services.codedeploy.model.CreateDeploymentResponse;
 import software.amazon.awssdk.services.codedeploy.model.DeploymentGroupInfo;
+import software.amazon.awssdk.services.codedeploy.model.DeploymentInfo;
 import software.amazon.awssdk.services.codedeploy.model.FileExistsBehavior;
 import software.amazon.awssdk.services.codedeploy.model.GetDeploymentGroupRequest;
+import software.amazon.awssdk.services.codedeploy.model.GetDeploymentRequest;
+import software.amazon.awssdk.services.codedeploy.model.GetDeploymentResponse;
 import software.amazon.awssdk.services.codedeploy.model.GetDeploymentGroupResponse;
 import software.amazon.awssdk.services.codedeploy.model.RevisionLocationType;
 
@@ -108,6 +111,33 @@ public class CreateDeployStepTests {
 	}
 
 	/**
+	 * waitForCompletion is optional, and dereferencing it unguarded used to throw a
+	 * NullPointerException for every pipeline that omitted it.
+	 */
+	@Test
+	public void omittingWaitForCompletionDoesNotPoll() throws Exception {
+		this.run("deployTestNoWait",
+				"applicationName: 'app', deploymentGroupName: 'group', s3Bucket: 'b', s3Key: 'k', s3BundleType: 'zip'",
+				Result.SUCCESS);
+
+		Mockito.verify(this.codeDeploy, Mockito.never()).getDeployment(Mockito.any(GetDeploymentRequest.class));
+	}
+
+	@Test
+	public void waitForCompletionPollsUntilTheDeploymentSucceeds() throws Exception {
+		Mockito.when(this.codeDeploy.getDeployment(Mockito.any(GetDeploymentRequest.class)))
+				.thenReturn(GetDeploymentResponse.builder()
+						.deploymentInfo(DeploymentInfo.builder().status("Succeeded").build())
+						.build());
+
+		this.run("deployTestWait",
+				"applicationName: 'app', deploymentGroupName: 'group', s3Bucket: 'b', s3Key: 'k', s3BundleType: 'zip', waitForCompletion: true",
+				Result.SUCCESS);
+
+		Mockito.verify(this.codeDeploy).getDeployment(GetDeploymentRequest.builder().deploymentId("d-1").build());
+	}
+
+	/**
 	 * v1 rejected an unrecognised value outright, naming it. v2's fromValue returns a sentinel
 	 * whose value is null, which would otherwise be sent to AWS as fileExistsBehavior=null and
 	 * fail there with an opaque message after the deployment call is already in flight.
@@ -125,6 +155,25 @@ public class CreateDeployStepTests {
 	/**
 	 * ECS and Lambda deployments must not carry fileExistsBehavior at all.
 	 */
+	/**
+	 * Validation runs before the compute-platform check, so a typo fails the same way regardless
+	 * of whether the deployment group turns out to be ECS.
+	 */
+	@Test
+	public void rejectsAnUnknownFileExistsBehaviorForEcsDeploymentsToo() throws Exception {
+		Mockito.when(this.codeDeploy.getDeploymentGroup(Mockito.any(GetDeploymentGroupRequest.class)))
+				.thenReturn(GetDeploymentGroupResponse.builder()
+						.deploymentGroupInfo(DeploymentGroupInfo.builder().computePlatform("ECS").build())
+						.build());
+
+		WorkflowRun run = this.run("deployTestEcsBadBehavior",
+				"applicationName: 'app', deploymentGroupName: 'group', s3Bucket: 'b', s3Key: 'k', s3BundleType: 'zip', fileExistsBehavior: 'OVERWRTIE'",
+				Result.FAILURE);
+
+		this.jenkinsRule.assertLogContains("OVERWRTIE", run);
+		Mockito.verify(this.codeDeploy, Mockito.never()).createDeployment(Mockito.any(CreateDeploymentRequest.class));
+	}
+
 	@Test
 	public void omitsFileExistsBehaviorForEcsDeployments() throws Exception {
 		Mockito.when(this.codeDeploy.getDeploymentGroup(Mockito.any(GetDeploymentGroupRequest.class)))
