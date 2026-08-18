@@ -291,10 +291,13 @@ public class AWSClientFactory implements Serializable {
 				.build();
 	}
 
+	static Duration getV2SocketTimeout(EnvVars vars) {
+		return Duration.ofMillis(Integer.parseInt(vars.get(AWS_SDK_SOCKET_TIMEOUT, "50000")));
+	}
+
 	static software.amazon.awssdk.http.SdkHttpClient getV2SyncHttpClient(EnvVars vars) {
-		int socketTimeout = Integer.parseInt(vars.get(AWS_SDK_SOCKET_TIMEOUT, "50000"));
 		return ApacheHttpClient.builder()
-				.socketTimeout(Duration.ofMillis(socketTimeout))
+				.socketTimeout(getV2SocketTimeout(vars))
 				.proxyConfiguration(ProxyConfiguration.buildV2ProxyConfiguration(vars))
 				.build();
 	}
@@ -375,9 +378,16 @@ public class AWSClientFactory implements Serializable {
 		return getV2Region(vars);
 	}
 
-	private static final Pattern AWS_ENDPOINT_REGION = Pattern.compile(
-			"^(?:.+\\.)?([a-z]{2}(?:-gov)?(?:-[a-z]+)+-\\d+)\\.amazonaws\\.com(?:\\.cn)?$");
+	private static final Pattern S3_DASH_ENDPOINT = Pattern.compile("^s3[-.]([a-z0-9-]+)$");
 
+	/**
+	 * Mirrors v1's {@code AwsHostNameUtils.parseRegion} closely enough for the endpoints it
+	 * resolves. Checked against v1 for: s3.eu-west-1.amazonaws.com and s3-eu-west-1.amazonaws.com
+	 * (both eu-west-1), iam.us-gov.amazonaws.com (us-gov-west-1), sns.amazonaws.com (us-east-1),
+	 * ec2.cn-north-1.amazonaws.com.cn (cn-north-1) and weird.regional.amazonaws.com (regional - v1
+	 * simply takes the segment, it does not validate it). Hosts outside amazonaws.com yield null in
+	 * v1 too, and fall through to the usual region chain here.
+	 */
 	private static software.amazon.awssdk.regions.Region parseRegionFromEndpoint(String endpointUrl) {
 		final String host;
 		try {
@@ -388,15 +398,33 @@ public class AWSClientFactory implements Serializable {
 		if (host == null) {
 			return null;
 		}
-		Matcher matcher = AWS_ENDPOINT_REGION.matcher(host);
-		if (matcher.matches()) {
-			return software.amazon.awssdk.regions.Region.of(matcher.group(1));
+
+		String remainder;
+		if (host.endsWith(".amazonaws.com.cn")) {
+			remainder = host.substring(0, host.length() - ".amazonaws.com.cn".length());
+		} else if (host.endsWith(".amazonaws.com")) {
+			remainder = host.substring(0, host.length() - ".amazonaws.com".length());
+		} else {
+			return null;
 		}
-		if (host.endsWith(".amazonaws.com")) {
-			// Legacy global endpoints such as sns.amazonaws.com; v1 resolves these to us-east-1.
+
+		int lastDot = remainder.lastIndexOf('.');
+		if (lastDot < 0) {
+			// A single segment: either the dash-style S3 endpoint (s3-eu-west-1) or a global
+			// endpoint such as sns.amazonaws.com, which v1 resolves to us-east-1.
+			Matcher dashed = S3_DASH_ENDPOINT.matcher(remainder);
+			if (dashed.matches()) {
+				return software.amazon.awssdk.regions.Region.of(dashed.group(1));
+			}
 			return software.amazon.awssdk.regions.Region.US_EAST_1;
 		}
-		return null;
+
+		String region = remainder.substring(lastDot + 1);
+		if ("us-gov".equals(region)) {
+			// v1 special-cases the bare us-gov fragment, as in iam.us-gov.amazonaws.com
+			return software.amazon.awssdk.regions.Region.US_GOV_WEST_1;
+		}
+		return software.amazon.awssdk.regions.Region.of(region);
 	}
 
 	static software.amazon.awssdk.regions.Region getV2Region(EnvVars vars) {

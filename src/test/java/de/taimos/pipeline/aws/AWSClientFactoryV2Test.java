@@ -22,6 +22,8 @@
 package de.taimos.pipeline.aws;
 
 import hudson.EnvVars;
+
+import java.time.Duration;
 import org.junit.Test;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -142,12 +144,38 @@ public class AWSClientFactoryV2Test {
 
 	/**
 	 * A non-AWS endpoint (MinIO and friends) yields no region in v1 either; the region is arbitrary
-	 * for such endpoints, so falling through to the usual chain is fine - it just must not fail.
+	 * for such endpoints, so it falls through to the usual chain. Asserted as delegation rather
+	 * than a literal region: the chain reads the aws.region system property, the process
+	 * environment, ~/.aws/config and instance metadata, so any fixed expectation here would depend
+	 * on the machine the suite runs on.
 	 */
 	@Test
 	public void aCustomEndpointFallsBackToTheNormalChain() {
-		assertThat(AWSClientFactory.getV2RegionForEndpoint(new EnvVars(), "https://minio.mycompany.com"))
-				.isEqualTo(Region.US_WEST_2);
+		EnvVars vars = new EnvVars();
+
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://minio.mycompany.com"))
+				.isEqualTo(AWSClientFactory.getV2Region(vars));
+	}
+
+	/**
+	 * Endpoint forms v1's AwsHostNameUtils resolves, checked against it directly. The dash-style S3
+	 * endpoint and the bare us-gov fragment are the two that a naive dotted-region regex misses,
+	 * and getting them wrong means signing for the wrong region - SignatureDoesNotMatch, or a
+	 * PermanentRedirect from S3.
+	 */
+	@Test
+	public void matchesTheV1EndpointRegionParsing() {
+		EnvVars vars = new EnvVars();
+
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://s3-eu-west-1.amazonaws.com"))
+				.isEqualTo(Region.EU_WEST_1);
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://iam.us-gov.amazonaws.com"))
+				.isEqualTo(Region.US_GOV_WEST_1);
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://ec2.cn-north-1.amazonaws.com.cn"))
+				.isEqualTo(Region.of("cn-north-1"));
+		// v1 takes the segment without validating it; matched here rather than "corrected"
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://weird.regional.amazonaws.com"))
+				.isEqualTo(Region.of("regional"));
 	}
 
 	/**
@@ -169,7 +197,9 @@ public class AWSClientFactoryV2Test {
 		EnvVars vars = new EnvVars();
 		vars.put(AWSClientFactory.AWS_SDK_SOCKET_TIMEOUT, "1234");
 
-		// the Apache client validates the value at build time; a bad carry-over throws here
+		assertThat(AWSClientFactory.getV2SocketTimeout(vars)).isEqualTo(Duration.ofMillis(1234));
+		// v1's default socket timeout, carried over unchanged
+		assertThat(AWSClientFactory.getV2SocketTimeout(new EnvVars())).isEqualTo(Duration.ofMillis(50000));
 		assertThat(AWSClientFactory.getV2SyncHttpClient(vars)).isNotNull();
 	}
 

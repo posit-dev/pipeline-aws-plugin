@@ -1105,10 +1105,13 @@ ebWaitOnEnvironmentHealth(
   [JENKINS-73650](https://issues.jenkins.io/browse/JENKINS-73650)). 1.45 is the last release usable
   on controllers older than 2.541.1.
 * Migrated to the AWS SDK for Java 2.x: `snsPublish`, `ec2ShareAmi`, `setAccountAlias`, `updateIdP`,
-  `updateTrustPolicy` and `listAWSAccounts`. Behaviour and step parameters are unchanged, but AWS
+  `updateTrustPolicy`, `listAWSAccounts`, `elbRegisterInstance`, `elbDeregisterInstance`,
+  `elbIsInstanceRegistered`, `elbIsInstanceDeregistered`, `createDeployment`,
+  `awaitDeploymentCompletion` and `deployAPI`. Behaviour and step parameters are unchanged, but AWS
   errors from these steps now surface as SDK v2 exceptions
   (`software.amazon.awssdk.services...Exception`) rather than `com.amazonaws...AmazonServiceException`,
-  so build logs and anything scraping them will show different exception names and wording.
+  so build logs and anything scraping them will show different exception names and wording. The ELB
+  steps also log the raw AWS response, whose rendering differs between the two SDKs.
 
 ## 1.45
 ### Enhanced ECS and Lambda Deployment Support

@@ -147,7 +147,44 @@ class ProxyConfiguration {
 			settings.nonProxyHosts = new HashSet<>(Arrays.asList(noProxy.split(",")));
 		}
 
+		useSystemPropertiesV2(settings);
+
 		return settings.toProxyConfiguration();
+	}
+
+	/**
+	 * v1 leaves ClientConfiguration's proxy fields unset and lets the Apache layer
+	 * ({@code HttpClientSettings}) fall back to the JVM proxy system properties for whatever the
+	 * plugin did not set, so a controller started with -Dhttps.proxyHost still proxies. That
+	 * fallback is reproduced explicitly rather than through the SDK's own
+	 * {@code useSystemPropertyValues}, because v2 resolves those against the scheme of the endpoint
+	 * - which is pinned to http here - and would therefore read http.proxyHost where v1, whose
+	 * protocol defaults to HTTPS, reads https.proxyHost.
+	 *
+	 * These are a fallback only: anything already supplied by the Jenkins proxy configuration or
+	 * the environment variables above wins, matching v1's precedence.
+	 */
+	private static void useSystemPropertiesV2(V2ProxySettings settings) {
+		if (settings.host == null || settings.host.isEmpty()) {
+			String host = System.getProperty("https.proxyHost");
+			if (host != null && !host.isEmpty()) {
+				settings.host = host;
+				String port = System.getProperty("https.proxyPort");
+				settings.port = port != null ? Integer.parseInt(port) : HTTPS_PORT;
+				if (settings.username == null) {
+					settings.username = System.getProperty("https.proxyUser");
+				}
+				if (settings.password == null) {
+					settings.password = System.getProperty("https.proxyPassword");
+				}
+			}
+		}
+		if (settings.nonProxyHosts == null) {
+			String nonProxyHosts = System.getProperty("http.nonProxyHosts");
+			if (nonProxyHosts != null && !nonProxyHosts.isEmpty()) {
+				settings.nonProxyHosts = new HashSet<>(Arrays.asList(nonProxyHosts.split("\\|")));
+			}
+		}
 	}
 
 	private static void useJenkinsProxyV2(V2ProxySettings settings) {
@@ -198,11 +235,12 @@ class ProxyConfiguration {
 		private Set<String> nonProxyHosts;
 
 		private software.amazon.awssdk.http.apache.ProxyConfiguration toProxyConfiguration() {
-			// Both of these default to true, which makes the SDK fall back to the controller's own
-			// http_proxy/no_proxy environment variables and http.proxyHost system properties for
-			// anything not set explicitly. v1 did no such resolution for these values, so leaving
-			// the defaults would route traffic through a proxy this plugin was never told about -
-			// including for users who set only HTTP_PROXY, which v1 ignores.
+			// Both of these default to true. Environment resolution is switched off because v1 does
+			// none: leaving it on routes traffic through a proxy this plugin was never told about,
+			// including for users who set only HTTP_PROXY, which v1 ignores. The SDK's own
+			// system-property resolution is switched off too, but replaced by useSystemPropertiesV2
+			// above, because the SDK reads them against the endpoint scheme (http) while v1 reads
+			// the https.* ones.
 			software.amazon.awssdk.http.apache.ProxyConfiguration.Builder builder =
 					software.amazon.awssdk.http.apache.ProxyConfiguration.builder()
 							.useSystemPropertyValues(false)

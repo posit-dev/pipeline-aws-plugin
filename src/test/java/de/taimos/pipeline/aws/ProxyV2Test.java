@@ -137,6 +137,49 @@ public class ProxyV2Test {
 	}
 
 	/**
+	 * v1 leaves ClientConfiguration's proxy fields unset and lets the Apache layer fall back to the
+	 * JVM proxy system properties, so a controller started with -Dhttps.proxyHost proxies even with
+	 * no Jenkins proxy and no HTTPS_PROXY set. Reproduced explicitly, since the SDK's own
+	 * system-property support resolves against the endpoint scheme rather than v1's https.* names.
+	 */
+	@Test
+	public void fallsBackToTheJvmProxySystemProperties() throws Exception {
+		System.setProperty("https.proxyHost", "sysprop.corp");
+		System.setProperty("https.proxyPort", "3129");
+		System.setProperty("http.nonProxyHosts", "internal.corp|*.local");
+		try {
+			ProxyConfiguration config = de.taimos.pipeline.aws.ProxyConfiguration.buildV2ProxyConfiguration(new EnvVars());
+
+			assertThat(config.host()).isEqualTo("sysprop.corp");
+			assertThat(config.port()).isEqualTo(3129);
+			assertThat(config.nonProxyHosts()).containsExactlyInAnyOrder("internal.corp", "*.local");
+		} finally {
+			System.clearProperty("https.proxyHost");
+			System.clearProperty("https.proxyPort");
+			System.clearProperty("http.nonProxyHosts");
+		}
+	}
+
+	/**
+	 * The system properties are only a fallback: an explicitly configured proxy wins, as in v1.
+	 */
+	@Test
+	public void environmentVariablesWinOverSystemProperties() throws Exception {
+		System.setProperty("https.proxyHost", "sysprop.corp");
+		try {
+			EnvVars vars = new EnvVars();
+			vars.put(de.taimos.pipeline.aws.ProxyConfiguration.HTTPS_PROXY, "http://fromenv.corp:8888/");
+
+			ProxyConfiguration config = de.taimos.pipeline.aws.ProxyConfiguration.buildV2ProxyConfiguration(vars);
+
+			assertThat(config.host()).isEqualTo("fromenv.corp");
+			assertThat(config.port()).isEqualTo(8888);
+		} finally {
+			System.clearProperty("https.proxyHost");
+		}
+	}
+
+	/**
 	 * v1 discards the scheme of the proxy URL and connects to the proxy over plain HTTP regardless,
 	 * so an https:// proxy URL must not turn into a TLS connection to the proxy here either.
 	 */
