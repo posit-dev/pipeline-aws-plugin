@@ -177,7 +177,6 @@ class ProxyConfiguration {
 			if (matcher.group(5) != null) {
 				settings.password = matcher.group(5);
 			}
-			settings.scheme = matcher.group(1);
 			settings.host = matcher.group(6);
 			if (matcher.group(8) != null) {
 				settings.port = Integer.parseInt(matcher.group(8));
@@ -192,7 +191,6 @@ class ProxyConfiguration {
 	 * URI, so the parts are collected first and assembled at the end.
 	 */
 	private static final class V2ProxySettings {
-		private String scheme = "http";
 		private String host;
 		private int port;
 		private String username;
@@ -200,11 +198,21 @@ class ProxyConfiguration {
 		private Set<String> nonProxyHosts;
 
 		private software.amazon.awssdk.http.apache.ProxyConfiguration toProxyConfiguration() {
+			// Both of these default to true, which makes the SDK fall back to the controller's own
+			// http_proxy/no_proxy environment variables and http.proxyHost system properties for
+			// anything not set explicitly. v1 did no such resolution for these values, so leaving
+			// the defaults would route traffic through a proxy this plugin was never told about -
+			// including for users who set only HTTP_PROXY, which v1 ignores.
 			software.amazon.awssdk.http.apache.ProxyConfiguration.Builder builder =
-					software.amazon.awssdk.http.apache.ProxyConfiguration.builder();
+					software.amazon.awssdk.http.apache.ProxyConfiguration.builder()
+							.useSystemPropertyValues(false)
+							.useEnvironmentVariableValues(false);
 
+			// The v1 path discards the scheme from the proxy URL and leaves ClientConfiguration's
+			// proxy protocol at its HTTP default, so HTTPS_PROXY=https://proxy:8080 means a plain
+			// HTTP connection to the proxy. Hard-coding http here keeps that.
 			if (this.host != null && !this.host.isEmpty()) {
-				builder.endpoint(URI.create(this.scheme + "://" + this.host + ":" + this.port));
+				builder.endpoint(URI.create("http://" + this.host + ":" + this.port));
 			}
 			if (this.username != null) {
 				builder.username(this.username);

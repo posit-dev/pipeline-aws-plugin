@@ -94,8 +94,8 @@ public class SetAccountAliasStep extends Step {
 			listener.getLogger().format("Checking for account alias %s %n", this.name);
 			ListAccountAliasesResponse listResult = iamClient.listAccountAliases();
 
-			// no or different alias set
-			if (!listResult.hasAccountAliases() || listResult.accountAliases().isEmpty() || !listResult.accountAliases().contains(this.name)) {
+			// no or different alias set; v2 returns an empty auto-construct list rather than null
+			if (!listResult.accountAliases().contains(this.name)) {
 				// Update alias
 				iamClient.createAccountAlias(CreateAccountAliasRequest.builder().accountAlias(this.name).build());
 				listener.getLogger().format("Created account alias %s %n", this.name);

@@ -53,6 +53,8 @@ import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.URI;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.time.Duration;
 
 
@@ -255,9 +257,12 @@ public class AWSClientFactory implements Serializable {
 
 		// v1 treats region and endpoint as mutually exclusive, but v2 needs a region for request
 		// signing even when the endpoint is overridden, so the region is always resolved here.
-		clientBuilder.region(getV2Region(vars));
-		if (StringUtils.isNotBlank(vars.get(AWS_ENDPOINT_URL))) {
-			clientBuilder.endpointOverride(URI.create(vars.get(AWS_ENDPOINT_URL)));
+		String endpointUrl = vars.get(AWS_ENDPOINT_URL);
+		if (StringUtils.isNotBlank(endpointUrl)) {
+			clientBuilder.region(getV2RegionForEndpoint(vars, endpointUrl));
+			clientBuilder.endpointOverride(URI.create(endpointUrl));
+		} else {
+			clientBuilder.region(getV2Region(vars));
 		}
 
 		clientBuilder.credentialsProvider(getV2Credentials(vars, context));
@@ -265,6 +270,12 @@ public class AWSClientFactory implements Serializable {
 
 		if (clientBuilder instanceof SdkSyncClientBuilder) {
 			((SdkSyncClientBuilder<?, ?>) clientBuilder).httpClient(getV2SyncHttpClient(vars));
+		} else {
+			// Async builders need their HTTP client configured through a different interface, and
+			// with a different dependency (netty). Nothing here builds one yet; failing loudly
+			// means the first service that does cannot silently lose the socket timeout and proxy
+			// settings applied above.
+			throw new IllegalStateException("Asynchronous AWS clients are not supported yet: " + clientBuilder.getClass().getName());
 		}
 
 		return clientBuilder;
@@ -336,6 +347,54 @@ public class AWSClientFactory implements Serializable {
 				return StaticCredentialsProvider.create(AwsSessionCredentials.create(accessKey, secretAccessKey, sessionToken));
 			}
 			return StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretAccessKey));
+		}
+		return null;
+	}
+
+	/**
+	 * v1 passes the endpoint and {@code AWS_REGION} to {@code EndpointConfiguration}. When no region
+	 * is set there, the v1 SDK derives the signing region from the endpoint host
+	 * ({@code AwsHostNameUtils.parseRegion}), so {@code withAWS(endpointUrl:
+	 * 'https://s3.eu-west-1.amazonaws.com')} signs for eu-west-1 without the user naming a region -
+	 * and the plugin documents region and endpointUrl as mutually exclusive, so that is the normal
+	 * way to use it. Resolving through the usual chain instead would sign for whatever the profile
+	 * or instance metadata yields, or us-west-2, and fail in a way that is hard to trace.
+	 *
+	 * Hosts that are not AWS endpoints (a MinIO server, say) yield nothing here, exactly as they
+	 * yield null in v1; those fall through to the normal chain, and the region is arbitrary for
+	 * such endpoints anyway.
+	 */
+	static software.amazon.awssdk.regions.Region getV2RegionForEndpoint(EnvVars vars, String endpointUrl) {
+		if (vars.get(AWS_DEFAULT_REGION) != null || vars.get(AWS_REGION) != null) {
+			return getV2Region(vars);
+		}
+		software.amazon.awssdk.regions.Region parsed = parseRegionFromEndpoint(endpointUrl);
+		if (parsed != null) {
+			return parsed;
+		}
+		return getV2Region(vars);
+	}
+
+	private static final Pattern AWS_ENDPOINT_REGION = Pattern.compile(
+			"^(?:.+\\.)?([a-z]{2}(?:-gov)?(?:-[a-z]+)+-\\d+)\\.amazonaws\\.com(?:\\.cn)?$");
+
+	private static software.amazon.awssdk.regions.Region parseRegionFromEndpoint(String endpointUrl) {
+		final String host;
+		try {
+			host = URI.create(endpointUrl).getHost();
+		} catch (IllegalArgumentException e) {
+			return null;
+		}
+		if (host == null) {
+			return null;
+		}
+		Matcher matcher = AWS_ENDPOINT_REGION.matcher(host);
+		if (matcher.matches()) {
+			return software.amazon.awssdk.regions.Region.of(matcher.group(1));
+		}
+		if (host.endsWith(".amazonaws.com")) {
+			// Legacy global endpoints such as sns.amazonaws.com; v1 resolves these to us-east-1.
+			return software.amazon.awssdk.regions.Region.US_EAST_1;
 		}
 		return null;
 	}

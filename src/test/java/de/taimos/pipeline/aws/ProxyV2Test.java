@@ -119,6 +119,12 @@ public class ProxyV2Test {
 	 * HTTP_PROXY is deliberately ignored: the v1 code branches on a protocol that this plugin never
 	 * sets away from the HTTPS default, so its HTTP_PROXY branch is unreachable. Honouring it here
 	 * would newly route traffic through a proxy for users who set only that variable.
+	 *
+	 * This assertion only holds because the builder disables the SDK's own system-property and
+	 * environment-variable resolution. With those defaults left on, the SDK fills the host in from
+	 * the controller's ambient http_proxy, and this test passes or fails depending on the machine
+	 * it runs on. Verified by running this class with http_proxy exported; note the full suite
+	 * cannot be run that way, because WithAWSStepTest makes real calls to AWS STS.
 	 */
 	@Test
 	public void shouldIgnoreHttpProxyAsV1Does() throws Exception {
@@ -128,5 +134,21 @@ public class ProxyV2Test {
 		ProxyConfiguration config = de.taimos.pipeline.aws.ProxyConfiguration.buildV2ProxyConfiguration(vars);
 
 		assertThat(config.host()).isNull();
+	}
+
+	/**
+	 * v1 discards the scheme of the proxy URL and connects to the proxy over plain HTTP regardless,
+	 * so an https:// proxy URL must not turn into a TLS connection to the proxy here either.
+	 */
+	@Test
+	public void shouldIgnoreProxyUrlScheme() throws Exception {
+		EnvVars vars = new EnvVars();
+		vars.put(de.taimos.pipeline.aws.ProxyConfiguration.HTTPS_PROXY, "https://proxy.corp:8080/");
+
+		ProxyConfiguration config = de.taimos.pipeline.aws.ProxyConfiguration.buildV2ProxyConfiguration(vars);
+
+		assertThat(config.host()).isEqualTo("proxy.corp");
+		assertThat(config.port()).isEqualTo(8080);
+		assertThat(config.scheme()).isEqualTo("http");
 	}
 }

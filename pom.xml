@@ -152,41 +152,11 @@
             gone the same conflict can resurface through aws-credentials and would need the
             exclusion declared there instead.
         -->
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.aws-java-sdk</groupId>
-            <artifactId>aws-java-sdk-ec2</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.sun.xml.bind</groupId>
-                    <artifactId>jaxb-impl</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
 
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.aws-java-sdk</groupId>
-            <artifactId>aws-java-sdk-sns</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.sun.xml.bind</groupId>
-                    <artifactId>jaxb-impl</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
 
         <dependency>
             <groupId>org.jenkins-ci.plugins.aws-java-sdk</groupId>
             <artifactId>aws-java-sdk-elasticloadbalancingv2</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.sun.xml.bind</groupId>
-                    <artifactId>jaxb-impl</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.aws-java-sdk</groupId>
-            <artifactId>aws-java-sdk-organizations</artifactId>
             <exclusions>
                 <exclusion>
                     <groupId>com.sun.xml.bind</groupId>
@@ -246,16 +216,6 @@
             </exclusions>
         </dependency>
 
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.aws-java-sdk</groupId>
-            <artifactId>aws-java-sdk-iam</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.sun.xml.bind</groupId>
-                    <artifactId>jaxb-impl</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins.aws-java-sdk</groupId>
             <artifactId>aws-java-sdk-elasticbeanstalk</artifactId>

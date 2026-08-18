@@ -30,6 +30,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.awscore.retry.AwsRetryStrategy;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.retries.api.RetryStrategy;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -110,6 +111,66 @@ public class AWSClientFactoryV2Test {
 		RetryStrategy.Builder<?, ?> builder = AwsRetryStrategy.standardRetryStrategy().toBuilder();
 		configuration.retryStrategyConfigurator().get().accept(builder);
 		return builder.build().maxAttempts();
+	}
+
+	/**
+	 * v1 hands the endpoint and AWS_REGION to EndpointConfiguration, and with no region set the SDK
+	 * derives the signing region from the endpoint host. Since the plugin documents region and
+	 * endpointUrl as mutually exclusive, that is the normal way withAWS(endpointUrl: ...) is used.
+	 */
+	@Test
+	public void regionIsDerivedFromAnAwsEndpointWhenNoRegionIsSet() {
+		EnvVars vars = new EnvVars();
+
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://s3.eu-west-1.amazonaws.com"))
+				.isEqualTo(Region.EU_WEST_1);
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://sns.us-gov-west-1.amazonaws.com"))
+				.isEqualTo(Region.US_GOV_WEST_1);
+		// legacy global endpoints resolve to us-east-1 in v1
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://sns.amazonaws.com"))
+				.isEqualTo(Region.US_EAST_1);
+	}
+
+	@Test
+	public void anExplicitRegionWinsOverTheEndpointHost() {
+		EnvVars vars = new EnvVars();
+		vars.put(AWSClientFactory.AWS_REGION, "ap-southeast-2");
+
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://s3.eu-west-1.amazonaws.com"))
+				.isEqualTo(Region.AP_SOUTHEAST_2);
+	}
+
+	/**
+	 * A non-AWS endpoint (MinIO and friends) yields no region in v1 either; the region is arbitrary
+	 * for such endpoints, so falling through to the usual chain is fine - it just must not fail.
+	 */
+	@Test
+	public void aCustomEndpointFallsBackToTheNormalChain() {
+		assertThat(AWSClientFactory.getV2RegionForEndpoint(new EnvVars(), "https://minio.mycompany.com"))
+				.isEqualTo(Region.US_WEST_2);
+	}
+
+	/**
+	 * v2 refuses to build a client without a region even when the endpoint is overridden, so this
+	 * is the case that fails outright if the region is not always set.
+	 */
+	@Test
+	public void buildsAClientWithOnlyAnEndpointConfigured() {
+		EnvVars vars = new EnvVars();
+		vars.put(AWSClientFactory.AWS_ENDPOINT_URL, "https://minio.mycompany.com");
+		vars.put(AWSClientFactory.AWS_ACCESS_KEY_ID, "AKIAEXAMPLE");
+		vars.put(AWSClientFactory.AWS_SECRET_ACCESS_KEY, "secret");
+
+		assertThat(AWSClientFactory.configureV2Builder(StsClient.builder(), null, vars).build()).isNotNull();
+	}
+
+	@Test
+	public void socketTimeoutIsCarriedOver() {
+		EnvVars vars = new EnvVars();
+		vars.put(AWSClientFactory.AWS_SDK_SOCKET_TIMEOUT, "1234");
+
+		// the Apache client validates the value at build time; a bad carry-over throws here
+		assertThat(AWSClientFactory.getV2SyncHttpClient(vars)).isNotNull();
 	}
 
 	@Test
