@@ -35,8 +35,6 @@ import software.amazon.awssdk.services.codedeploy.model.GetDeploymentRequest;
 import software.amazon.awssdk.services.codedeploy.model.GetDeploymentResponse;
 
 import java.io.PrintStream;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -119,25 +117,31 @@ public class DeployUtilsTest {
 	public void isInterruptibleSoAbortingABuildStopsTheWait() throws Exception {
 		this.stubStatus("InProgress", null);
 		AtomicReference<Throwable> thrown = new AtomicReference<>();
-		CountDownLatch started = new CountDownLatch(1);
 
 		Thread worker = new Thread(() -> {
-			started.countDown();
 			try {
 				new DeployUtils().waitDeployment("d-1", this.listener, this.client);
 			} catch (Throwable t) {
 				thrown.set(t);
 			}
 		});
+		// daemon so that a regression here - the loop no longer stopping - cannot leave a thread
+		// polling the mock for the rest of the surefire fork
+		worker.setDaemon(true);
 		worker.start();
 
-		assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
-		Thread.sleep(500);
+		// No need to wait for the worker to reach the sleep: the interrupt flag is sticky, and
+		// neither the mocked client nor the mocked PrintStream clears it, so Thread.sleep throws
+		// as soon as the loop gets there whether or not it has started yet.
 		worker.interrupt();
-		worker.join(10_000);
+		try {
+			worker.join(10_000);
 
-		assertThat(worker.isAlive()).isFalse();
-		assertThat(thrown.get()).isInstanceOf(InterruptedException.class);
+			assertThat(worker.isAlive()).isFalse();
+			assertThat(thrown.get()).isInstanceOf(InterruptedException.class);
+		} finally {
+			worker.interrupt();
+		}
 	}
 
 	@Test
