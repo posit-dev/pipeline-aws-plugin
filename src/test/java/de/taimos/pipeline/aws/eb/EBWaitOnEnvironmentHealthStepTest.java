@@ -75,8 +75,9 @@ public class EBWaitOnEnvironmentHealthStepTest {
         execution.run();
 
         // returning at all is the point - an enum accessor here would loop forever - but the poll
-        // count is bounded too, so an extra round trip does not slip through unnoticed: the step
-        // needs the health to hold across polls, which takes exactly two with a zero threshold
+        // count is bounded too, so an extra round trip does not slip through unnoticed. With a
+        // zero threshold the step returns on the first poll if a millisecond has already elapsed
+        // and on the second otherwise, so the bound is at most two rather than a fixed count.
         Mockito.verify(client, Mockito.atMost(2)).describeEnvironments(Mockito.any(DescribeEnvironmentsRequest.class));
     }
 
