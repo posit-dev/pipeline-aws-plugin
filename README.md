@@ -1109,7 +1109,8 @@ ebWaitOnEnvironmentHealth(
   `elbIsInstanceRegistered`, `elbIsInstanceDeregistered`, `createDeployment`,
   `awaitDeploymentCompletion`, `deployAPI`, `ebCreateApplication`,
   `ebCreateApplicationVersion`, `ebCreateConfigurationTemplate`, `ebCreateEnvironment`,
-  `ebSwapEnvironmentCNAMEs`, `ebWaitOnEnvironmentStatus` and `ebWaitOnEnvironmentHealth`. Behaviour and step parameters are unchanged, but AWS
+  `ebSwapEnvironmentCNAMEs`, `ebWaitOnEnvironmentStatus`, `ebWaitOnEnvironmentHealth`,
+  `invokeLambda` and `cfInvalidate`. Behaviour and step parameters are unchanged, but AWS
   errors from these steps now surface as SDK v2 exceptions
   (`software.amazon.awssdk.services...Exception`) rather than `com.amazonaws...AmazonServiceException`,
   so build logs and anything scraping them will show different exception names and wording. The ELB
