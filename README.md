@@ -721,6 +721,9 @@ Delete images in a repository.
 ecrDeleteImage(repositoryName: 'foo', imageIds: [['imageDigest': 'digest', 'imageTag': 'tag']])
 ```
 
+The step returns a list of maps, each with `imageTag` and `imageDigest`, for the images that were
+deleted.
+
 ## ecrListImages
 
 List images in a repository.
@@ -1123,9 +1126,11 @@ ebWaitOnEnvironmentHealth(
 * **Breaking**: `ecrDeleteImage` and `ecrSetRepositoryPolicy` now return maps rather than AWS SDK
   objects - `[[imageTag: ..., imageDigest: ...]]` and
   `[registryId: ..., repositoryName: ..., policyText: ...]` respectively. Reading fields off the
-  previous return value was never possible from a pipeline (Jenkins script security rejects field
-  and getter access on SDK model classes), so only `echo` output changes, and those values are now
-  readable. `ecrListImages` already returned maps and is unchanged.
+  previous return value was not possible from a *sandboxed* pipeline - Jenkins script security
+  rejects field and getter access on SDK model classes - so for sandboxed scripts only `echo`
+  output changes, and those values are now readable. Scripts running outside the sandbox (approved
+  scripts, shared libraries) could call `getRegistryId()` or `getImageTag()` on the returned object
+  and must switch to the map keys. `ecrListImages` already returned maps and is unchanged.
 * The `ecrDeleteImage` documentation previously named the step `ecrDeleteImages`, which does not
   exist; copying that example failed with `No such DSL method`. The docs now match the step.
 * `createDeployment` no longer fails with a `NullPointerException` when `waitForCompletion` is

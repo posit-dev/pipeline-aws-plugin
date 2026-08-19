@@ -4,7 +4,6 @@ import software.amazon.awssdk.services.ecr.EcrClient;
 import software.amazon.awssdk.services.ecr.model.BatchDeleteImageRequest;
 import software.amazon.awssdk.services.ecr.model.BatchDeleteImageResponse;
 import software.amazon.awssdk.services.ecr.model.ImageFailure;
-import software.amazon.awssdk.services.ecr.model.ImageIdentifier;
 import de.taimos.pipeline.aws.AWSClientFactory;
 import de.taimos.pipeline.aws.utils.StepUtils;
 import hudson.Extension;
@@ -18,10 +17,9 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
 import edu.umd.cs.findbugs.annotations.NonNull;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.Set;
 

@@ -8,6 +8,8 @@ import de.taimos.pipeline.aws.AWSClientFactory;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.junit.Assert;
+import hudson.model.Run;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -29,19 +31,23 @@ public class ECRDeleteImagesStepTests {
 		AWSClientFactory.setV2FactoryDelegate((x) -> this.ecr);
 	}
 
-	@org.junit.After
+	@After
 	public void tearDownSdk() throws Exception {
 		AWSClientFactory.setV2FactoryDelegate(null);
 	}
 
-	@Test
-	public void deleteImage() throws Exception {
+
+	private void stubDeletedImage() {
 		Mockito.when(this.ecr.batchDeleteImage(Mockito.any(BatchDeleteImageRequest.class)))
 				.thenReturn(BatchDeleteImageResponse.builder()
 						.imageIds(ImageIdentifier.builder().imageTag("it1").imageDigest("id1").build())
 						.failures(Collections.emptyList())
 						.build()
 				);
+	}
+	@Test
+	public void deleteImage() throws Exception {
+		this.stubDeletedImage();
 		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "cfnTest");
 		job.setDefinition(new CpsFlowDefinition(""
 				+ "node {\n"
@@ -70,12 +76,7 @@ public class ECRDeleteImagesStepTests {
 	 */
 	@Test
 	public void returnsImageIdsAsReadableMaps() throws Exception {
-		Mockito.when(this.ecr.batchDeleteImage(Mockito.any(BatchDeleteImageRequest.class)))
-				.thenReturn(BatchDeleteImageResponse.builder()
-						.imageIds(ImageIdentifier.builder().imageTag("it1").imageDigest("id1").build())
-						.failures(Collections.emptyList())
-						.build()
-				);
+		this.stubDeletedImage();
 		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "ecrDeleteReturn");
 		job.setDefinition(new CpsFlowDefinition(""
 				+ "node {\n"
@@ -83,7 +84,7 @@ public class ECRDeleteImagesStepTests {
 				+ "  echo \"tag=${r[0].imageTag} digest=${r[0].imageDigest}\"\n"
 				+ "}\n", true)
 		);
-		hudson.model.Run run = this.jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+		Run run = this.jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
 
 		this.jenkinsRule.assertLogContains("tag=it1 digest=id1", run);
 	}

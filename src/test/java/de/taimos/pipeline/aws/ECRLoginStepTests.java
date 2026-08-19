@@ -115,7 +115,9 @@ public class ECRLoginStepTests {
 
 		ArgumentCaptor<GetAuthorizationTokenRequest> captor = ArgumentCaptor.forClass(GetAuthorizationTokenRequest.class);
 		Mockito.verify(this.ecr).getAuthorizationToken(captor.capture());
-		assertThat(captor.getValue().registryIds()).isEmpty();
+		// hasRegistryIds, not isEmpty: v2 returns an auto-construct empty list for an unset member,
+		// so isEmpty would also pass if the step had sent an explicit empty list
+		assertThat(captor.getValue().hasRegistryIds()).isFalse();
 	}
 
 	@Test

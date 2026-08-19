@@ -9,6 +9,9 @@ import de.taimos.pipeline.aws.AWSClientFactory;
 import hudson.model.Run;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
+import org.junit.Assert;
+import org.mockito.ArgumentCaptor;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -30,7 +33,7 @@ public class ECRListImagesStepTests {
 				.thenAnswer(invocation -> new ListImagesIterable(this.ecr, invocation.getArgument(0)));
 	}
 
-	@org.junit.After
+	@After
 	public void tearDownSdk() throws Exception {
 		AWSClientFactory.setV2FactoryDelegate(null);
 	}
@@ -60,4 +63,54 @@ public class ECRListImagesStepTests {
 		Mockito.verify(this.ecr, Mockito.times(2)).listImages(Mockito.any(ListImagesRequest.class));
 	}
 
+
+	/**
+	 * JenkinsListImageFilter stopped being an SDK subclass, so both the Stapler binding of
+	 * filter: [tagStatus: ...] and the conversion to the v2 model are new code. A filter that is
+	 * dropped or mis-bound does not throw - the step just returns every image instead of the
+	 * requested subset, which matters because pipelines feed this into ecrDeleteImage.
+	 */
+	@Test
+	public void passesTheTagStatusFilterThrough() throws Exception {
+		Mockito.when(this.ecr.listImages(Mockito.any(ListImagesRequest.class)))
+				.thenReturn(ListImagesResponse.builder()
+						.imageIds(ImageIdentifier.builder().imageDigest("id1").build())
+						.build());
+
+		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "ecrListFiltered");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  ecrListImages(repositoryName: 'rName', filter: [tagStatus: 'UNTAGGED'])\n"
+				+ "}\n", true)
+		);
+		this.jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+
+		ArgumentCaptor<ListImagesRequest> captor = ArgumentCaptor.forClass(ListImagesRequest.class);
+		Mockito.verify(this.ecr).listImages(captor.capture());
+		Assert.assertEquals("UNTAGGED", captor.getValue().filter().tagStatusAsString());
+	}
+
+	/**
+	 * filter is optional: omitting it must leave the request without one rather than send an empty
+	 * filter object.
+	 */
+	@Test
+	public void omitsTheFilterWhenNotGiven() throws Exception {
+		Mockito.when(this.ecr.listImages(Mockito.any(ListImagesRequest.class)))
+				.thenReturn(ListImagesResponse.builder()
+						.imageIds(ImageIdentifier.builder().imageDigest("id1").build())
+						.build());
+
+		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "ecrListUnfiltered");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  ecrListImages(repositoryName: 'rName')\n"
+				+ "}\n", true)
+		);
+		this.jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+
+		ArgumentCaptor<ListImagesRequest> captor = ArgumentCaptor.forClass(ListImagesRequest.class);
+		Mockito.verify(this.ecr).listImages(captor.capture());
+		Assert.assertNull(captor.getValue().filter());
+	}
 }

@@ -9,6 +9,7 @@ import org.jenkinsci.plugins.scriptsecurity.sandbox.whitelists.Whitelisted;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.junit.Assert;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -30,7 +31,7 @@ public class ECRSetRepositoryPolicyStepTests {
 		AWSClientFactory.setV2FactoryDelegate((x) -> this.ecr);
 	}
 
-	@org.junit.After
+	@After
 	public void tearDownSdk() throws Exception {
 		AWSClientFactory.setV2FactoryDelegate(null);
 	}
