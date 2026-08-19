@@ -8,7 +8,9 @@ import org.jenkinsci.plugins.workflow.steps.StepContext;
 import org.junit.Assert;
 import org.junit.After;
 import org.junit.BeforeClass;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
@@ -19,6 +21,13 @@ import java.util.Collections;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EBWaitOnEnvironmentStatusStepTest {
+
+    /**
+     * These steps poll in an unbounded while(true) loop, so a regression in how the status is read
+     * would hang the build instead of failing it. The timeout turns that back into a test failure.
+     */
+    @Rule
+    public Timeout globalTimeout = Timeout.seconds(60);
     @Captor
     ArgumentCaptor<DescribeEnvironmentsRequest> describeCaptor;
 

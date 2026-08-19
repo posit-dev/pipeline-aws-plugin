@@ -228,12 +228,13 @@ class ProxyConfiguration {
 		}
 	}
 
+	/** No port configured. Apache resolves -1 against the endpoint scheme, which is http here, so 80. */
+	private static final int UNSET_PORT = -1;
+
 	/**
 	 * v1 sets host, port, credentials and non-proxy hosts independently; v2 wants a single endpoint
 	 * URI, so the parts are collected first and assembled at the end.
 	 */
-	private static final int UNSET_PORT = -1;
-
 	private static final class V2ProxySettings {
 		private String host;
 		private int port = UNSET_PORT;

@@ -424,10 +424,6 @@ public class AWSClientFactory implements Serializable {
 		}
 
 		String region = remainder.substring(lastDot + 1);
-		if (region.isEmpty()) {
-			// Region.of rejects a blank id; fall through to the usual chain instead of throwing.
-			return null;
-		}
 		if ("us-gov".equals(region)) {
 			// v1 special-cases the bare us-gov fragment, as in iam.us-gov.amazonaws.com
 			return software.amazon.awssdk.regions.Region.US_GOV_WEST_1;

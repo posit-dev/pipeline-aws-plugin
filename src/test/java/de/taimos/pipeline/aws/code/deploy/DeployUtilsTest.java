@@ -23,7 +23,9 @@ package de.taimos.pipeline.aws.code.deploy;
 
 import hudson.model.TaskListener;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.Timeout;
 import org.mockito.Mockito;
 import software.amazon.awssdk.services.codedeploy.CodeDeployClient;
 import software.amazon.awssdk.services.codedeploy.model.DeploymentInfo;
@@ -43,6 +45,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * terminal branch and the build would hang rather than fail - which no other test would notice.
  */
 public class DeployUtilsTest {
+
+	/**
+	 * These steps poll in an unbounded while(true) loop, so a regression in how the status is read
+	 * would hang the build instead of failing it. The timeout turns that back into a test failure.
+	 */
+	@Rule
+	public Timeout globalTimeout = Timeout.seconds(60);
 
 	private CodeDeployClient client;
 	private TaskListener listener;

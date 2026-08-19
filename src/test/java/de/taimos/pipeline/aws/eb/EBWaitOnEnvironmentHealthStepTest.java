@@ -8,7 +8,9 @@ import org.jenkinsci.plugins.workflow.steps.StepContext;
 import org.junit.Assert;
 import org.junit.After;
 import org.junit.BeforeClass;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
@@ -19,6 +21,13 @@ import java.util.Collections;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EBWaitOnEnvironmentHealthStepTest {
+
+    /**
+     * These steps poll in an unbounded while(true) loop, so a regression in how the status is read
+     * would hang the build instead of failing it. The timeout turns that back into a test failure.
+     */
+    @Rule
+    public Timeout globalTimeout = Timeout.seconds(60);
     @Captor
     ArgumentCaptor<DescribeEnvironmentsRequest> describeCaptor;
 
@@ -65,9 +74,10 @@ public class EBWaitOnEnvironmentHealthStepTest {
 
         execution.run();
 
-        // the step requires the health to hold across polls, so it always describes at least twice;
-        // what matters here is that it terminates at all rather than looping forever
-        Mockito.verify(client, Mockito.atLeast(1)).describeEnvironments(Mockito.any(DescribeEnvironmentsRequest.class));
+        // returning at all is the point - an enum accessor here would loop forever - but the poll
+        // count is bounded too, so an extra round trip does not slip through unnoticed: the step
+        // needs the health to hold across polls, which takes exactly two with a zero threshold
+        Mockito.verify(client, Mockito.atMost(2)).describeEnvironments(Mockito.any(DescribeEnvironmentsRequest.class));
     }
 
     @Test

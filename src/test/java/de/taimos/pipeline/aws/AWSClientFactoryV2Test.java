@@ -181,7 +181,8 @@ public class AWSClientFactoryV2Test {
 				.isEqualTo(Region.EU_WEST_1);
 		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://bucket.s3.eu-west-1.amazonaws.com"))
 				.isEqualTo(Region.EU_WEST_1);
-		// an empty segment is not a region id; falls through to the chain rather than throwing
+		// a host URI cannot parse (the empty domain label makes getHost() null), so it falls
+		// through to the chain rather than throwing
 		assertThat(AWSClientFactory.getV2RegionForEndpoint(vars, "https://svc..amazonaws.com"))
 				.isEqualTo(AWSClientFactory.getV2Region(vars));
 	}

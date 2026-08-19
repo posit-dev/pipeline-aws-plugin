@@ -153,9 +153,6 @@ public class CreateDeployStepTests {
 	}
 
 	/**
-	 * ECS and Lambda deployments must not carry fileExistsBehavior at all.
-	 */
-	/**
 	 * Validation runs before the compute-platform check, so a typo fails the same way regardless
 	 * of whether the deployment group turns out to be ECS.
 	 */
@@ -174,6 +171,9 @@ public class CreateDeployStepTests {
 		Mockito.verify(this.codeDeploy, Mockito.never()).createDeployment(Mockito.any(CreateDeploymentRequest.class));
 	}
 
+	/**
+	 * ECS and Lambda deployments must not carry fileExistsBehavior at all.
+	 */
 	@Test
 	public void omitsFileExistsBehaviorForEcsDeployments() throws Exception {
 		Mockito.when(this.codeDeploy.getDeploymentGroup(Mockito.any(GetDeploymentGroupRequest.class)))
