@@ -31,7 +31,7 @@ This plugins adds Jenkins pipeline steps to interact with the AWS API.
 * [listAWSAccounts](#listawsaccounts)
 * [updateIdP](#updateidp)
 * [setAccountAlias](#setaccountalias)
-* [ecrDeleteImages](#ecrdeleteimages)
+* [ecrDeleteImage](#ecrdeleteimage)
 * [ecrListImages](#ecrlistimages)
 * [ecrLogin](#ecrlogin)
 * [ecrSetRepositoryPolicy](#ecrsetrepositorypolicy)
@@ -713,12 +713,12 @@ Create or update the AWS account alias.
 setAccountAlias(name: 'awsAlias')
 ```
 
-## ecrDeleteImages
+## ecrDeleteImage
 
 Delete images in a repository.
 
 ```groovy
-ecrDeleteImages(repositoryName: 'foo', imageIds: ['imageDigest': 'digest', 'imageTag': 'tag'])
+ecrDeleteImage(repositoryName: 'foo', imageIds: [['imageDigest': 'digest', 'imageTag': 'tag']])
 ```
 
 ## ecrListImages
@@ -759,7 +759,7 @@ Sets the json policy document containing ECR permissions.
 * repositoryName - The name of the repository to receive the policy.
 * policyText - The JSON repository policy text to apply to the repository. For more information, see [Amazon ECR Repository Policy Examples](https://docs.aws.amazon.com/AmazonECR/latest/userguide/RepositoryPolicyExamples.html) in the _Amazon Elastic Container Registry User Guide_. 
 
-The step returns the object returned by the command.
+The step returns a map with `registryId`, `repositoryName` and `policyText`.
 * Note - make sure you set the correct region in the credentials in order to find the repository
 
 ```groovy
@@ -1110,7 +1110,8 @@ ebWaitOnEnvironmentHealth(
   `awaitDeploymentCompletion`, `deployAPI`, `ebCreateApplication`,
   `ebCreateApplicationVersion`, `ebCreateConfigurationTemplate`, `ebCreateEnvironment`,
   `ebSwapEnvironmentCNAMEs`, `ebWaitOnEnvironmentStatus`, `ebWaitOnEnvironmentHealth`,
-  `invokeLambda` and `cfInvalidate`. Behaviour and step parameters are unchanged, but AWS
+  `invokeLambda`, `cfInvalidate`, `ecrDeleteImage`, `ecrListImages`, `ecrSetRepositoryPolicy` and
+  `ecrLogin`. Behaviour and step parameters are unchanged, but AWS
   errors from these steps now surface as SDK v2 exceptions
   (`software.amazon.awssdk.services...Exception`) rather than `com.amazonaws...AmazonServiceException`,
   so build logs and anything scraping them will show different exception names and wording. The ELB
@@ -1119,6 +1120,14 @@ ebWaitOnEnvironmentHealth(
   `software.amazon.awssdk.core.exception.SdkClientException` - a core-package exception, not a
   service one, so it does not match the prefix above - rather than
   `com.amazonaws.waiters.WaiterTimedOutException`.
+* **Breaking**: `ecrDeleteImage` and `ecrSetRepositoryPolicy` now return maps rather than AWS SDK
+  objects - `[[imageTag: ..., imageDigest: ...]]` and
+  `[registryId: ..., repositoryName: ..., policyText: ...]` respectively. Reading fields off the
+  previous return value was never possible from a pipeline (Jenkins script security rejects field
+  and getter access on SDK model classes), so only `echo` output changes, and those values are now
+  readable. `ecrListImages` already returned maps and is unchanged.
+* The `ecrDeleteImage` documentation previously named the step `ecrDeleteImages`, which does not
+  exist; copying that example failed with `No such DSL method`. The docs now match the step.
 * `createDeployment` no longer fails with a `NullPointerException` when `waitForCompletion` is
   omitted; the parameter is optional and now defaults to not waiting.
 * `createDeployment` again rejects an unrecognised `fileExistsBehavior` before calling AWS, with
