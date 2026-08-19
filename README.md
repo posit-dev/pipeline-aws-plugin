@@ -1120,9 +1120,10 @@ ebWaitOnEnvironmentHealth(
   the same `Cannot create enum from ... value!` message as before. The AWS SDK v2 does not fail on
   unknown enum values, so without this the typo would have reached AWS as an empty value.
 * `createDeployment` (with `waitForCompletion`) and `awaitDeploymentCompletion` can now be
-  interrupted: aborting a build while either was waiting for a deployment left the step polling
-  CodeDeploy until the executor went away. This is a long-standing bug, present in 1.45 and
-  earlier, not a regression introduced by the SDK v2 migration.
+  interrupted: aborting a build while either was waiting left the step polling CodeDeploy until
+  the deployment itself reached a terminal state, so the build did not stop when it was aborted.
+  This is a long-standing bug, present in 1.45 and earlier, not a regression introduced by the
+  SDK v2 migration.
 * `ebCreateConfigurationTemplate` now logs the application name in its completion message, which
   previously repeated the template name.
 

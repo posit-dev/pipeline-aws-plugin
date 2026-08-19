@@ -134,14 +134,10 @@ public class DeployUtilsTest {
 		// neither the mocked client nor the mocked PrintStream clears it, so Thread.sleep throws
 		// as soon as the loop gets there whether or not it has started yet.
 		worker.interrupt();
-		try {
-			worker.join(10_000);
+		worker.join(10_000);
 
-			assertThat(worker.isAlive()).isFalse();
-			assertThat(thrown.get()).isInstanceOf(InterruptedException.class);
-		} finally {
-			worker.interrupt();
-		}
+		assertThat(worker.isAlive()).isFalse();
+		assertThat(thrown.get()).isInstanceOf(InterruptedException.class);
 	}
 
 	@Test
