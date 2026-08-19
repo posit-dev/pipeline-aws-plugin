@@ -37,11 +37,10 @@ public class DeployUtils {
 				throw new Exception("Deployment was stopped");
 			} else {
 				listener.getLogger().println("Deployment still in progress... sleeping");
-				try {
-					Thread.sleep(POLLING_INTERVAL);
-				} catch (InterruptedException e) {
-					//
-				}
+				// Left to propagate: Jenkins aborts a step by interrupting its thread, so swallowing
+				// this made the wait uninterruptible and an aborted build kept polling. The Elastic
+				// Beanstalk wait steps already let it out of run().
+				Thread.sleep(POLLING_INTERVAL);
 			}
 
 		}

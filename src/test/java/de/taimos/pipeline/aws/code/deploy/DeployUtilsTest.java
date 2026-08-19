@@ -35,6 +35,9 @@ import software.amazon.awssdk.services.codedeploy.model.GetDeploymentRequest;
 import software.amazon.awssdk.services.codedeploy.model.GetDeploymentResponse;
 
 import java.io.PrintStream;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -106,6 +109,35 @@ public class DeployUtilsTest {
 
 		assertThatThrownBy(() -> new DeployUtils().waitDeployment("d-1", this.listener, this.client))
 				.hasMessageContaining("stopped");
+	}
+
+	/**
+	 * Jenkins aborts a step by interrupting its thread. Swallowing the InterruptedException left
+	 * this loop running, so an aborted build carried on polling CodeDeploy until the executor died.
+	 */
+	@Test
+	public void isInterruptibleSoAbortingABuildStopsTheWait() throws Exception {
+		this.stubStatus("InProgress", null);
+		AtomicReference<Throwable> thrown = new AtomicReference<>();
+		CountDownLatch started = new CountDownLatch(1);
+
+		Thread worker = new Thread(() -> {
+			started.countDown();
+			try {
+				new DeployUtils().waitDeployment("d-1", this.listener, this.client);
+			} catch (Throwable t) {
+				thrown.set(t);
+			}
+		});
+		worker.start();
+
+		assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
+		Thread.sleep(500);
+		worker.interrupt();
+		worker.join(10_000);
+
+		assertThat(worker.isAlive()).isFalse();
+		assertThat(thrown.get()).isInstanceOf(InterruptedException.class);
 	}
 
 	@Test
