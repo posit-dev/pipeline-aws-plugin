@@ -1,6 +1,6 @@
 package de.taimos.pipeline.aws.cloudformation.parser;
 
-import com.amazonaws.services.cloudformation.model.Parameter;
+import software.amazon.awssdk.services.cloudformation.model.Parameter;
 import com.amazonaws.util.StringInputStream;
 import org.assertj.core.api.Assertions;
 import org.junit.Test;
@@ -16,9 +16,7 @@ public class JSONParameterFileParserTests {
 		String json = "[{\"ParameterKey\": \"bar\", \"ParameterValue\": \"foo\"}]";
 		Collection<Parameter> parameters = parser.parseParams(new StringInputStream(json));
 		Assertions.assertThat(parameters).containsExactlyInAnyOrder(
-				new Parameter()
-				.withParameterKey("bar")
-				.withParameterValue("foo")
+				Parameter.builder().parameterKey("bar").parameterValue("foo").build()
 		);
 	}
 
@@ -28,9 +26,7 @@ public class JSONParameterFileParserTests {
 		String json = "[{\"ParameterKey\": \"bar\", \"UsePreviousValue\": true}]";
 		Collection<Parameter> parameters = parser.parseParams(new StringInputStream(json));
 		Assertions.assertThat(parameters).containsExactlyInAnyOrder(
-				new Parameter()
-						.withParameterKey("bar")
-						.withUsePreviousValue(true)
+				Parameter.builder().parameterKey("bar").usePreviousValue(true).build()
 		);
 	}
 }

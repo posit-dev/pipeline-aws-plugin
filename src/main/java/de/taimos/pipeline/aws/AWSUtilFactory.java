@@ -1,6 +1,6 @@
 package de.taimos.pipeline.aws;
 
-import com.amazonaws.services.cloudformation.AmazonCloudFormation;
+import software.amazon.awssdk.services.cloudformation.CloudFormationClient;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.transfer.TransferManager;
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder;
@@ -31,14 +31,14 @@ public class AWSUtilFactory {
 		stackSetSupplier = supplier;
 	}
 
-	public static CloudFormationStack newCFStack(AmazonCloudFormation client, String stack, TaskListener listener) {
+	public static CloudFormationStack newCFStack(CloudFormationClient client, String stack, TaskListener listener) {
 		if (stackSupplier != null) {
 			return stackSupplier.apply(stack);
 		}
 		return new CloudFormationStack(client, stack, listener);
 	}
 
-	public static CloudFormationStackSet newCFStackSet(AmazonCloudFormation client,
+	public static CloudFormationStackSet newCFStackSet(CloudFormationClient client,
 			String stack, TaskListener listener, SleepStrategy sleepStrategy) {
 		if (stackSetSupplier != null) {
 			return stackSetSupplier.apply(stack);

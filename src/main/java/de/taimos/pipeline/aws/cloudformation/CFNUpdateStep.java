@@ -33,9 +33,9 @@ import org.jenkinsci.plugins.workflow.steps.StepExecution;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
-import com.amazonaws.services.cloudformation.model.Parameter;
-import com.amazonaws.services.cloudformation.model.RollbackConfiguration;
-import com.amazonaws.services.cloudformation.model.Tag;
+import software.amazon.awssdk.services.cloudformation.model.Parameter;
+import software.amazon.awssdk.services.cloudformation.model.RollbackConfiguration;
+import software.amazon.awssdk.services.cloudformation.model.Tag;
 
 import de.taimos.pipeline.aws.utils.StepUtils;
 import hudson.EnvVars;

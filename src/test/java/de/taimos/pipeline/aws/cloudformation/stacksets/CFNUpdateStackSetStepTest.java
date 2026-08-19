@@ -1,11 +1,11 @@
 package de.taimos.pipeline.aws.cloudformation.stacksets;
 
-import com.amazonaws.services.cloudformation.AmazonCloudFormation;
-import com.amazonaws.services.cloudformation.model.Parameter;
-import com.amazonaws.services.cloudformation.model.StackInstanceSummary;
-import com.amazonaws.services.cloudformation.model.StackSetOperationPreferences;
-import com.amazonaws.services.cloudformation.model.UpdateStackSetRequest;
-import com.amazonaws.services.cloudformation.model.UpdateStackSetResult;
+import software.amazon.awssdk.services.cloudformation.CloudFormationClient;
+import software.amazon.awssdk.services.cloudformation.model.Parameter;
+import software.amazon.awssdk.services.cloudformation.model.StackInstanceSummary;
+import software.amazon.awssdk.services.cloudformation.model.StackSetOperationPreferences;
+import software.amazon.awssdk.services.cloudformation.model.UpdateStackSetRequest;
+import software.amazon.awssdk.services.cloudformation.model.UpdateStackSetResponse;
 import de.taimos.pipeline.aws.AWSClientFactory;
 import de.taimos.pipeline.aws.AWSUtilFactory;
 import lombok.Builder;
@@ -42,8 +42,8 @@ public class CFNUpdateStackSetStepTest {
 	@Before
 	public void setupSdk() throws Exception {
 		stackSet = Mockito.mock(CloudFormationStackSet.class);
-		AmazonCloudFormation cloudFormation = Mockito.mock(AmazonCloudFormation.class);
-		AWSClientFactory.setFactoryDelegate((x) -> cloudFormation);
+		CloudFormationClient cloudFormation = Mockito.mock(CloudFormationClient.class);
+		AWSClientFactory.setV2FactoryDelegate((x) -> cloudFormation);
 		AWSUtilFactory.setStackSetSupplier(s -> {
 			assertEquals("foo", s);
 			return stackSet;
@@ -83,8 +83,7 @@ public class CFNUpdateStackSetStepTest {
 		Mockito.when(stackSet.exists()).thenReturn(true);
 		String operationId = UUID.randomUUID().toString();
 		Mockito.when(stackSet.update(nullable(String.class), nullable(String.class), Mockito.any(UpdateStackSetRequest.class)))
-				.thenReturn(new UpdateStackSetResult()
-						.withOperationId(operationId)
+				.thenReturn(UpdateStackSetResponse.builder().operationId(operationId).build()
 				);
 		job.setDefinition(new CpsFlowDefinition(""
 				+ "node {\n"
@@ -98,13 +97,9 @@ public class CFNUpdateStackSetStepTest {
 
 		ArgumentCaptor<UpdateStackSetRequest> requestCapture = ArgumentCaptor.forClass(UpdateStackSetRequest.class);
 		Mockito.verify(stackSet).update(nullable(String.class), nullable(String.class), requestCapture.capture());
-		Assertions.assertThat(requestCapture.getValue().getParameters()).containsExactlyInAnyOrder(
-				new Parameter()
-						.withParameterKey("foo")
-						.withParameterValue("bar"),
-				new Parameter()
-						.withParameterKey("foo1")
-						.withParameterValue("25")
+		Assertions.assertThat(requestCapture.getValue().parameters()).containsExactlyInAnyOrder(
+				Parameter.builder().parameterKey("foo").parameterValue("bar").build(),
+				Parameter.builder().parameterKey("foo1").parameterValue("25").build()
 		);
 
 		Mockito.verify(stackSet).waitForOperationToComplete(operationId, Duration.ofMillis(27));
@@ -116,8 +111,7 @@ public class CFNUpdateStackSetStepTest {
 		Mockito.when(stackSet.exists()).thenReturn(true);
 		String operationId = UUID.randomUUID().toString();
 		Mockito.when(stackSet.update(nullable(String.class), nullable(String.class), Mockito.any(UpdateStackSetRequest.class)))
-				.thenReturn(new UpdateStackSetResult()
-						.withOperationId(operationId)
+				.thenReturn(UpdateStackSetResponse.builder().operationId(operationId).build()
 				);
 		job.setDefinition(new CpsFlowDefinition(""
 				+ "node {\n"
@@ -129,12 +123,7 @@ public class CFNUpdateStackSetStepTest {
 		ArgumentCaptor<UpdateStackSetRequest> requestCapture = ArgumentCaptor.forClass(UpdateStackSetRequest.class);
 		Mockito.verify(stackSet).update(nullable(String.class), nullable(String.class), requestCapture.capture());
 
-		Assertions.assertThat(requestCapture.getValue().getOperationPreferences()).isEqualTo(new StackSetOperationPreferences()
-				.withFailureToleranceCount(5)
-                .withRegionOrder("us-west-2")
-				.withFailureTolerancePercentage(17)
-				.withMaxConcurrentCount(18)
-				.withMaxConcurrentPercentage(34)
+		Assertions.assertThat(requestCapture.getValue().operationPreferences()).isEqualTo(StackSetOperationPreferences.builder().failureToleranceCount(5).regionOrder("us-west-2").failureTolerancePercentage(17).maxConcurrentCount(18).maxConcurrentPercentage(34).build()
 		);
 
 		Mockito.verify(stackSet).waitForOperationToComplete(operationId, Duration.ofSeconds(1));
@@ -146,8 +135,7 @@ public class CFNUpdateStackSetStepTest {
 		Mockito.when(stackSet.exists()).thenReturn(true);
 		String operationId = UUID.randomUUID().toString();
 		Mockito.when(stackSet.update(nullable(String.class), nullable(String.class), Mockito.any(UpdateStackSetRequest.class)))
-				.thenReturn(new UpdateStackSetResult()
-						.withOperationId(operationId)
+				.thenReturn(UpdateStackSetResponse.builder().operationId(operationId).build()
 				);
 		job.setDefinition(new CpsFlowDefinition(""
 				+ "node {\n"
@@ -179,14 +167,13 @@ public class CFNUpdateStackSetStepTest {
 		Mockito.when(stackSet.exists()).thenReturn(true);
 		String operationId = UUID.randomUUID().toString();
 		Mockito.when(stackSet.update(nullable(String.class), nullable(String.class), Mockito.any(UpdateStackSetRequest.class)))
-				.thenReturn(new UpdateStackSetResult()
-						.withOperationId(operationId)
+				.thenReturn(UpdateStackSetResponse.builder().operationId(operationId).build()
 				);
 		Mockito.when(stackSet.findStackSetInstances()).thenReturn(asList(
-				new StackInstanceSummary().withAccount("a1").withRegion("r1"),
-				new StackInstanceSummary().withAccount("a2").withRegion("r1"),
-				new StackInstanceSummary().withAccount("a2").withRegion("r2"),
-				new StackInstanceSummary().withAccount("a3").withRegion("r3")
+				StackInstanceSummary.builder().account("a1").region("r1").build(),
+				StackInstanceSummary.builder().account("a2").region("r1").build(),
+				StackInstanceSummary.builder().account("a2").region("r2").build(),
+				StackInstanceSummary.builder().account("a3").region("r3").build()
 		));
 		job.setDefinition(new CpsFlowDefinition(""
 				+ "node {\n"
@@ -204,9 +191,9 @@ public class CFNUpdateStackSetStepTest {
 		Mockito.verify(stackSet, Mockito.times(3)).update(nullable(String.class), nullable(String.class), requestCapture.capture());
 		Map<String, List<String>> capturedRegionAccounts = requestCapture.getAllValues()
 				.stream()
-				.flatMap(summary -> summary.getRegions()
+				.flatMap(summary -> summary.regions()
 						.stream()
-						.flatMap(region -> summary.getAccounts().stream()
+						.flatMap(region -> summary.accounts().stream()
 								.map(accountId -> RegionAccountIdTuple.builder().accountId(accountId).region(region).build())
 						))
 				.collect(Collectors.groupingBy(RegionAccountIdTuple::getRegion, Collectors.mapping(RegionAccountIdTuple::getAccountId, Collectors.toList())));

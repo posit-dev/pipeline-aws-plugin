@@ -21,8 +21,8 @@
 
 package de.taimos.pipeline.aws;
 
-import com.amazonaws.services.cloudformation.model.TemplateParameter;
-import com.amazonaws.services.cloudformation.model.ValidateTemplateResult;
+import software.amazon.awssdk.services.cloudformation.model.TemplateParameter;
+import software.amazon.awssdk.services.cloudformation.model.ValidateTemplateResponse;
 import org.junit.Test;
 
 import java.util.List;
@@ -47,13 +47,14 @@ public class AwsSdkResponseToJsonTest {
 
 	@Test
 	public void preservesTopLevelKeyNames() throws Exception {
-		ValidateTemplateResult result = new ValidateTemplateResult()
-				.withDescription("myDescription")
-				.withCapabilities("CAPABILITY_IAM")
-				.withCapabilitiesReason("because")
-				.withDeclaredTransforms("AWS::Serverless-2016-10-31")
+		ValidateTemplateResponse result = ValidateTemplateResponse.builder()
+				.description("myDescription")
+				.capabilitiesWithStrings("CAPABILITY_IAM")
+				.capabilitiesReason("because")
+				.declaredTransforms("AWS::Serverless-2016-10-31")
 				// left unpopulated on purpose: the nested keys are pinned by CFNValidateStepTests
-				.withParameters(new TemplateParameter());
+				.parameters(TemplateParameter.builder().build())
+				.build();
 
 		Map<String, Object> map = AwsSdkResponseToJson.convertToMap(result);
 

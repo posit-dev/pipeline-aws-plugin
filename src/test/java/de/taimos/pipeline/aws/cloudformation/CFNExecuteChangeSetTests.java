@@ -1,6 +1,6 @@
 package de.taimos.pipeline.aws.cloudformation;
 
-import com.amazonaws.services.cloudformation.AmazonCloudFormation;
+import software.amazon.awssdk.services.cloudformation.CloudFormationClient;
 import de.taimos.pipeline.aws.AWSClientFactory;
 import de.taimos.pipeline.aws.AWSUtilFactory;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
@@ -22,8 +22,8 @@ public class CFNExecuteChangeSetTests {
 	@Before
 	public void setupSdk() throws Exception {
 		this.stack = Mockito.mock(CloudFormationStack.class);
-		AmazonCloudFormation cloudFormation = Mockito.mock(AmazonCloudFormation.class);
-		AWSClientFactory.setFactoryDelegate((x) -> cloudFormation);
+		CloudFormationClient cloudFormation = Mockito.mock(CloudFormationClient.class);
+		AWSClientFactory.setV2FactoryDelegate((x) -> cloudFormation);
 		AWSUtilFactory.setStackSupplier(s -> {
 			assertEquals("foo", s);
 			return stack;
