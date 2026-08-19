@@ -1113,8 +1113,10 @@ ebWaitOnEnvironmentHealth(
   `awaitDeploymentCompletion`, `deployAPI`, `ebCreateApplication`,
   `ebCreateApplicationVersion`, `ebCreateConfigurationTemplate`, `ebCreateEnvironment`,
   `ebSwapEnvironmentCNAMEs`, `ebWaitOnEnvironmentStatus`, `ebWaitOnEnvironmentHealth`,
-  `invokeLambda`, `cfInvalidate`, `ecrDeleteImage`, `ecrListImages`, `ecrSetRepositoryPolicy` and
-  `ecrLogin`. Behaviour and step parameters are unchanged, but AWS
+  `invokeLambda`, `cfInvalidate`, `ecrDeleteImage`, `ecrListImages`, `ecrSetRepositoryPolicy`,
+  `ecrLogin`, `lambdaVersionCleanup`, `cfnValidate`, `cfnUpdate`, `cfnDelete`, `cfnDescribe`,
+  `cfnExports`, `cfnCreateChangeSet`, `cfnExecuteChangeSet`, `cfnUpdateStackSet` and
+  `cfnDeleteStackSet`. Behaviour and step parameters are unchanged, but AWS
   errors from these steps now surface as SDK v2 exceptions
   (`software.amazon.awssdk.services...Exception`) rather than `com.amazonaws...AmazonServiceException`,
   so build logs and anything scraping them will show different exception names and wording. The ELB
@@ -1123,6 +1125,10 @@ ebWaitOnEnvironmentHealth(
   `software.amazon.awssdk.core.exception.SdkClientException` - a core-package exception, not a
   service one, so it does not match the prefix above - rather than
   `com.amazonaws.waiters.WaiterTimedOutException`.
+* **Breaking**: `cfnValidate` no longer returns the undocumented `sdkResponseMetadata` and
+  `sdkHttpMetadata` keys. They were an artifact of serialising the AWS response object, which
+  exposed inherited HTTP plumbing; the documented fields (`description`, `parameters`,
+  `capabilities`, `capabilitiesReason`, `declaredTransforms`) are unchanged.
 * **Breaking**: `ecrDeleteImage` and `ecrSetRepositoryPolicy` now return maps rather than AWS SDK
   objects - `[[imageTag: ..., imageDigest: ...]]` and
   `[registryId: ..., repositoryName: ..., policyText: ...]` respectively. Reading fields off the

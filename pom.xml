@@ -126,56 +126,10 @@
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>structs</artifactId>
         </dependency>
-        <!--
-            TRANSITIONAL: the com.sun.xml.bind:jaxb-impl exclusions on the aws-java-sdk (v1)
-            dependencies below work around a maven-enforcer RequireUpperBoundDeps failure.
-
-            Without them, two versions of com.sun.xml.bind:jaxb-impl are reachable, both
-            underneath the SDK v1 subtrees via aws-java-sdk-minimal -> jackson2-api: 2.3.9
-            through io.jenkins.plugins:jaxb, and 4.0.9 through
-            io.jenkins.plugins:jakarta-xml-bind-api. Maven resolves the nearer 2.3.9, which is
-            lower than the 4.0.9 another path requires, and the rule fails.
-
-            Effect of the exclusions: jaxb-impl leaves the Maven classpath altogether (confirmed
-            with mvn dependency:tree -Dincludes=com.sun.xml.bind:jaxb-impl, which matches
-            nothing). That is fine because no code here compiles against it. The
-            io.jenkins.plugins:jaxb plugin itself stays on the graph - excluding the plugin
-            instead leaves jackson2-api unable to load and every SDK v1 plugin fails to start,
-            which InjectedTest catches even though the functional tests still pass. At runtime
-            Jenkins supplies the implementation from the jaxb plugin.
-
-            Remove these exclusions together with the v1 dependencies once the migration to the
-            AWS SDK for Java 2.x is complete. Two caveats for whoever does that: any new
-            aws-java-sdk-* dependency added before then needs the same exclusion, and
-            org.jenkins-ci.plugins:aws-credentials also depends on SDK v1. That path is
-            currently deduplicated by the nearer direct declarations here, so once those are
-            gone the same conflict can resurface through aws-credentials and would need the
-            exclusion declared there instead.
-        -->
 
 
 
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.aws-java-sdk</groupId>
-            <artifactId>aws-java-sdk-lambda</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.sun.xml.bind</groupId>
-                    <artifactId>jaxb-impl</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
 
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.aws-java-sdk</groupId>
-            <artifactId>aws-java-sdk-cloudformation</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.sun.xml.bind</groupId>
-                    <artifactId>jaxb-impl</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
         <!--
             AWS SDK for Java 2.x. During the migration this sits alongside the v1 dependencies
             above; the v1 ones are removed once every step has been converted. aws-java-sdk2-core
@@ -243,9 +197,29 @@
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>plain-credentials</artifactId>
         </dependency>
+        <!--
+            aws-credentials depends on the AWS SDK v1 plugins as well as the v2 ones, because its
+            AmazonWebServicesCredentials implements both SDKs' provider interfaces. That keeps SDK
+            v1 on this plugin's classpath even though nothing here uses it, and brings two versions
+            of com.sun.xml.bind:jaxb-impl into range of RequireUpperBoundDeps: 2.3.9 through
+            io.jenkins.plugins:jaxb, and 4.0.9 through io.jenkins.plugins:jakarta-xml-bind-api.
+
+            Only the library is excluded; the jaxb plugin itself has to stay, because jackson2-api
+            needs it at runtime. Excluding the plugin instead compiles and passes the functional
+            tests while leaving the plugin unloadable, which InjectedTest catches.
+
+            This can go once aws-credentials drops SDK v1 (jenkinsci/aws-credentials-plugin#284,
+            open since 2025 and deliberately held back for plugins that have not migrated).
+        -->
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>aws-credentials</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.sun.xml.bind</groupId>
+                    <artifactId>jaxb-impl</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.jenkins.plugins</groupId>
