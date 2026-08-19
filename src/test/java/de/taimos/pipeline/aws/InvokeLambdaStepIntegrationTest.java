@@ -94,6 +94,38 @@ public class InvokeLambdaStepIntegrationTest {
 		assertThat(captor.getValue().logType()).isEqualTo(LogType.TAIL);
 	}
 
+	/**
+	 * Invoke accepts a request with no payload and both payload parameters are optional, so
+	 * invokeLambda(functionName: 'fn') on its own is a legal call.
+	 */
+	@Test
+	public void worksWithoutAPayload() throws Exception {
+		this.stubInvoke("{}", null);
+
+		this.run("lambdaNoPayload", "  invokeLambda(functionName: 'fn')", Result.SUCCESS);
+
+		ArgumentCaptor<InvokeRequest> captor = ArgumentCaptor.forClass(InvokeRequest.class);
+		Mockito.verify(this.lambda).invoke(captor.capture());
+		assertThat(captor.getValue().payload()).isNull();
+	}
+
+	/**
+	 * payloadAsString is the other documented way to supply input, and it takes a different route
+	 * into the SdkBytes conversion than the payload parameter.
+	 */
+	@Test
+	public void sendsAStringPayloadUnchanged() throws Exception {
+		this.stubInvoke("{}", null);
+
+		this.run("lambdaStringPayload",
+				"  invokeLambda(functionName: 'fn', payloadAsString: '{\"key\": \"value\"}')",
+				Result.SUCCESS);
+
+		ArgumentCaptor<InvokeRequest> captor = ArgumentCaptor.forClass(InvokeRequest.class);
+		Mockito.verify(this.lambda).invoke(captor.capture());
+		assertThat(captor.getValue().payload().asString(StandardCharsets.UTF_8)).isEqualTo("{\"key\": \"value\"}");
+	}
+
 	@Test
 	public void parsesTheResponsePayloadByDefault() throws Exception {
 		this.stubInvoke("{\"answer\":42}", null);

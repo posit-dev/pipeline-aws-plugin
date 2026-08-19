@@ -111,8 +111,8 @@ public class DeployUtilsTest {
 
 	/**
 	 * Jenkins aborts a step by interrupting its thread. Swallowing the InterruptedException left
-	 * this loop running, so an aborted build carried on polling CodeDeploy until the deployment
-	 * itself reached a terminal state, and did not stop when it was aborted.
+	 * this loop running, so the step kept polling CodeDeploy until the deployment itself reached a
+	 * terminal state and the build did not stop when it was aborted.
 	 */
 	@Test
 	public void isInterruptibleSoAbortingABuildStopsTheWait() throws Exception {

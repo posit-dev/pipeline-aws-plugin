@@ -1114,7 +1114,11 @@ ebWaitOnEnvironmentHealth(
   errors from these steps now surface as SDK v2 exceptions
   (`software.amazon.awssdk.services...Exception`) rather than `com.amazonaws...AmazonServiceException`,
   so build logs and anything scraping them will show different exception names and wording. The ELB
-  steps also log the raw AWS response, whose rendering differs between the two SDKs.
+  steps also log the raw AWS response, whose rendering differs between the two SDKs. A
+  `cfInvalidate(waitForCompletion: true)` that times out now fails with
+  `software.amazon.awssdk.core.exception.SdkClientException` rather than
+  `com.amazonaws.waiters.WaiterTimedOutException`, which is a core-package exception rather than a
+  service one.
 * `createDeployment` no longer fails with a `NullPointerException` when `waitForCompletion` is
   omitted; the parameter is optional and now defaults to not waiting.
 * `createDeployment` again rejects an unrecognised `fileExistsBehavior` before calling AWS, with

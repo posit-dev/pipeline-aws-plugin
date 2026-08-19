@@ -135,13 +135,17 @@ public class InvokeLambdaStep extends Step {
 
 			listener.getLogger().format("Invoke Lambda function %s%n", functionName);
 
-			InvokeRequest request = InvokeRequest.builder()
+			InvokeRequest.Builder request = InvokeRequest.builder()
 					.functionName(functionName)
-					.payload(SdkBytes.fromString(this.step.getPayloadAsString(), StandardCharsets.UTF_8))
-					.logType(LogType.TAIL)
-					.build();
+					.logType(LogType.TAIL);
+			// Both payload parameters are optional and Invoke accepts a request without one, but
+			// SdkBytes.fromString throws on null where v1's withPayload(String) accepted it.
+			String payload = this.step.getPayloadAsString();
+			if (payload != null) {
+				request.payload(SdkBytes.fromString(payload, StandardCharsets.UTF_8));
+			}
 
-			InvokeResponse result = client.invoke(request);
+			InvokeResponse result = client.invoke(request.build());
 
 			listener.getLogger().append(this.getLogResult(result));
 			String functionError = result.functionError();
