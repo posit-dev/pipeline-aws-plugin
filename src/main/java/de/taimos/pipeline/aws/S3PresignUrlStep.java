@@ -21,8 +21,6 @@
 
 package de.taimos.pipeline.aws;
 
-import com.amazonaws.HttpMethod;
-import com.amazonaws.services.s3.AmazonS3;
 import com.google.common.base.Preconditions;
 import de.taimos.pipeline.aws.utils.StepUtils;
 import hudson.EnvVars;
@@ -33,19 +31,35 @@ import org.jenkinsci.plugins.workflow.steps.StepContext;
 import org.jenkinsci.plugins.workflow.steps.StepDescriptor;
 import org.jenkinsci.plugins.workflow.steps.StepExecution;
 import org.jenkinsci.plugins.workflow.steps.SynchronousNonBlockingStepExecution;
-import org.joda.time.DateTime;
 import org.kohsuke.stapler.DataBoundConstructor;
 
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+
 import java.net.URL;
-import java.util.Date;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 public class S3PresignUrlStep extends AbstractS3Step {
 
+	/**
+	 * v1's generatePresignedUrl took an HttpMethod and signed a URL for it, so it accepted anything
+	 * in com.amazonaws.HttpMethod - including POST and PATCH. v2 presigns per operation instead, and
+	 * offers only these four. POST and PATCH are rejected in the constructor rather than silently
+	 * producing a GET URL.
+	 */
+	private static final List<String> SUPPORTED_HTTP_METHODS = Arrays.asList("GET", "PUT", "DELETE", "HEAD");
+
 	private final String bucket;
 	private final String key;
 	private final int durationInSeconds;
-	private final HttpMethod httpMethod;
+	private final String httpMethod;
 
 	@DataBoundConstructor
 	public S3PresignUrlStep(String bucket, String key, String httpMethod, Integer durationInSeconds, boolean pathStyleAccessEnabled, boolean payloadSigningEnabled) {
@@ -58,9 +72,11 @@ public class S3PresignUrlStep extends AbstractS3Step {
 			this.durationInSeconds = durationInSeconds;
 		}
 		if (httpMethod == null) {
-			this.httpMethod = HttpMethod.GET;
+			this.httpMethod = "GET";
 		} else {
-			this.httpMethod = HttpMethod.valueOf(httpMethod);
+			this.httpMethod = httpMethod.toUpperCase(Locale.ROOT);
+			Preconditions.checkArgument(SUPPORTED_HTTP_METHODS.contains(this.httpMethod),
+					"httpMethod must be one of %s, got '%s'", SUPPORTED_HTTP_METHODS, httpMethod);
 		}
 	}
 
@@ -76,7 +92,7 @@ public class S3PresignUrlStep extends AbstractS3Step {
 		return durationInSeconds;
 	}
 
-	public HttpMethod getHttpMethod() {
+	public String getHttpMethod() {
 		return httpMethod;
 	}
 
@@ -124,10 +140,34 @@ public class S3PresignUrlStep extends AbstractS3Step {
 			Preconditions.checkArgument(key != null && !key.isEmpty(), "Key must not be null or empty");
 
 			EnvVars envVars = this.getContext().get(EnvVars.class);
-			AmazonS3 s3 = AWSClientFactory.create(this.step.createS3ClientOptions().createAmazonS3ClientBuilder(), this.getContext(), envVars);
-			Date expiration = DateTime.now().plusSeconds(this.step.getDurationInSeconds()).toDate();
-			URL url = s3.generatePresignedUrl(bucket, key, expiration, this.step.getHttpMethod());
-			return url.toString();
+			Duration signatureDuration = Duration.ofSeconds(this.step.getDurationInSeconds());
+
+			try (S3Presigner presigner = AWSClientFactory.createS3Presigner(
+					this.step.createS3ClientOptions().createS3Configuration(), this.getContext(), envVars)) {
+				URL url = presign(presigner, this.step.getHttpMethod(), bucket, key, signatureDuration);
+				return url.toString();
+			}
+		}
+
+		private static URL presign(S3Presigner presigner, String httpMethod, String bucket, String key, Duration signatureDuration) {
+			switch (httpMethod) {
+				case "PUT":
+					return presigner.presignPutObject(r -> r
+							.signatureDuration(signatureDuration)
+							.putObjectRequest(PutObjectRequest.builder().bucket(bucket).key(key).build())).url();
+				case "DELETE":
+					return presigner.presignDeleteObject(r -> r
+							.signatureDuration(signatureDuration)
+							.deleteObjectRequest(DeleteObjectRequest.builder().bucket(bucket).key(key).build())).url();
+				case "HEAD":
+					return presigner.presignHeadObject(r -> r
+							.signatureDuration(signatureDuration)
+							.headObjectRequest(HeadObjectRequest.builder().bucket(bucket).key(key).build())).url();
+				default:
+					return presigner.presignGetObject(r -> r
+							.signatureDuration(signatureDuration)
+							.getObjectRequest(GetObjectRequest.builder().bucket(bucket).key(key).build())).url();
+			}
 		}
 
 	}

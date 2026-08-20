@@ -376,9 +376,9 @@ The duration can be overridden:
 def url = s3PresignURL(bucket: 'mybucket', key: 'mykey', durationInSeconds: 300) //5 minutes
 ```
 
-The method can also be overridden:
+The method can also be overridden. `GET` (the default), `PUT`, `DELETE` and `HEAD` are supported:
 ```groovy
-def url = s3PresignURL(bucket: 'mybucket', key: 'mykey', httpMethod: 'POST')
+def url = s3PresignURL(bucket: 'mybucket', key: 'mykey', httpMethod: 'PUT')
 ```
 
 ## cfnValidate
@@ -1169,6 +1169,15 @@ ebWaitOnEnvironmentHealth(
   `result.getRegistryId()` for `ecrSetRepositoryPolicy`'s single object becomes
   `result.registryId`, and `result[0].getImageTag()` for an element of `ecrDeleteImage`'s list
   becomes `result[0].imageTag`. `ecrListImages` already returned maps and is unchanged.
+* **Breaking**: `s3PresignURL` no longer accepts `httpMethod: 'POST'` or `'PATCH'`, and fails with
+  `httpMethod must be one of [GET, PUT, DELETE, HEAD]` instead. SDK v1 signed a URL for whatever HTTP
+  method it was handed; v2 presigns a specific S3 operation, and there is no presigner for either of
+  those. Note that a presigned POST URL was never how browser form uploads to S3 work - those use a
+  separate policy-document mechanism this step has never implemented - so a `POST` URL from this step
+  was unlikely to have been usable in the first place. The README previously used `POST` in its own
+  example; it now uses `PUT`.
+* `s3PresignURL` now honours `pathStyleAccessEnabled`, which reaches the presigner alongside the
+  other S3 options.
 * `s3Delete`, `s3FindFiles` and `s3DoesObjectExist` now use the AWS SDK v2 S3 client. The
   `pathStyleAccessEnabled` and `payloadSigningEnabled` parameters still work; v2 has no direct
   equivalent of the latter, so it is expressed as disabling `aws-chunked` encoding, which is the

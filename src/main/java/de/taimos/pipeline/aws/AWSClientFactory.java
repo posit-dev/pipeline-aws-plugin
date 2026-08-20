@@ -51,6 +51,8 @@ import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import software.amazon.awssdk.services.s3.S3BaseClientBuilder;
+import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -282,6 +284,30 @@ public class AWSClientFactory implements Serializable {
 		}
 
 		return clientBuilder;
+	}
+
+	/**
+	 * S3Presigner is not an AwsClientBuilder - it is an SdkPresigner - so it cannot go through
+	 * configureV2Builder. Region, credentials and the endpoint override are resolved with the same
+	 * helpers so that s3PresignURL keeps agreeing with the other S3 steps about where it is pointing
+	 * and who it is.
+	 *
+	 * Nothing here configures an HTTP client or retries, because presigning is purely local: the
+	 * signature is computed in process and no request is sent.
+	 */
+	public static S3Presigner createS3Presigner(S3Configuration serviceConfiguration, StepContext context, EnvVars vars) {
+		S3Presigner.Builder presigner = S3Presigner.builder()
+				.serviceConfiguration(serviceConfiguration)
+				.credentialsProvider(getV2Credentials(vars, context));
+
+		String endpointUrl = vars.get(AWS_ENDPOINT_URL);
+		if (StringUtils.isNotBlank(endpointUrl)) {
+			presigner.region(getV2RegionForEndpoint(vars, endpointUrl));
+			presigner.endpointOverride(URI.create(endpointUrl));
+		} else {
+			presigner.region(getV2Region(vars));
+		}
+		return presigner.build();
 	}
 
 	/**
