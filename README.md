@@ -557,15 +557,20 @@ def outputs = cfnExecuteChangeSet(stack:'my-stack', changeSet:'my-change-set', p
 
 Create a stack set. Similar options to cfnUpdate. Will monitor the resulting StackSet operation and will fail the build step if the operation does not complete successfully.
 
-`pollInterval` (default 1000 ms) is the delay between the calls this step makes while waiting -
-`DescribeStackSetOperation` for an update, or `DescribeStackSet` while a newly created stack set
-becomes `ACTIVE`; raise it to stay clear of AWS API rate limits. This step prints no stack events, so
-unlike `cfnUpdate` the value `0` does not disable anything; it is treated as one second, so that it
-cannot become a tight loop against the AWS API.
+`pollInterval` (default 1000 ms) is the delay between the `DescribeStackSetOperation` calls this step
+makes while waiting for an update to finish; raise it to stay clear of AWS API rate limits. This step
+prints no stack events, so unlike `cfnUpdate` the value `0` does not disable anything; it is treated
+as one second, so that it cannot become a tight loop against the AWS API. (On the `create` path the
+step checks the new stack set's status instead, and since the API reports a stack set as only
+`ACTIVE` or `DELETED` that check settles on the first call rather than polling.)
 
-Note that these waits have no timeout: they poll until the stack set reaches a terminal state, for
-as long as that takes. `timeoutInMinutes` and `timeoutInSeconds` are accepted for consistency with
-`cfnUpdate` but do not apply here.
+Two things to know about the wait:
+
+* It has no timeout - it waits for as long as the operation takes. `timeoutInMinutes` and
+  `timeoutInSeconds` are accepted for consistency with `cfnUpdate` but do not apply here.
+* It fails, reporting the status it saw, if the stack set reaches a state other than the one being
+  waited for - `DELETED` while waiting for `ACTIVE`, for instance - rather than waiting for a state
+  that can no longer arrive.
 
 ```groovy
   cfnUpdateStackSet(stackSet:'myStackSet', url:'https://s3.amazonaws.com/my-templates-bucket/template.yaml')

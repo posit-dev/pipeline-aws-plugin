@@ -11,6 +11,8 @@ import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.UUID;
@@ -261,14 +263,33 @@ public class CloudFormationStackSetTest {
 	 * count is unbounded in practice. Both waits used to recurse once per poll, so a long wait died
 	 * with StackOverflowError rather than returning.
 	 *
-	 * Run on a thread with an explicitly small stack rather than relying on the ambient -Xss: the
-	 * failure being guarded against is invisible when these pass, so a larger default stack on some
-	 * future JDK or a surefire argLine would let the recursive shape pass silently. 2000 polls will
-	 * not fit in 128 KB of frames but costs a fraction of the recorded Mockito invocations that
-	 * out-running the default stack did.
+	 * Run on a thread asking for a small stack *and* with a large poll count. Thread's stackSize is
+	 * only a hint - HotSpot clamps it up to a platform minimum, so the usable depth stays partly
+	 * ambient and CI covers two platforms (linux/JDK 21 and windows/JDK 17). Since the failure being
+	 * guarded against is invisible when these pass, the margin has to come from the poll count, not
+	 * from the stack request. The invocation cost that a big count used to carry is gone because these
+	 * two use their own stubOnly mock, which records nothing.
 	 */
-	private static final int POLLS = 2000;
+	private static final int POLLS = 50_000;
 	private static final int SMALL_STACK_BYTES = 128 * 1024;
+
+	/**
+	 * Positive, so effectivePollInterval leaves it alone, but toMillis() is 0 - so the loop runs at
+	 * full speed while still going through the sleep. Duration.ofMillis(1) would cost 50k sleeps, and
+	 * on Windows before JDK 19 each rounds up to the ~15 ms timer granularity.
+	 */
+	private static final Duration NO_WAIT = Duration.ofNanos(1);
+
+	/**
+	 * A stub-only client for the two high-count tests: the shared field is verified by other tests, so
+	 * it has to keep recording, but 50k recorded invocations per test is pure waste.
+	 */
+	private CloudFormationStackSet stackSetWithStubOnlyClient(CloudFormationClient stubOnlyClient) {
+		// discard the per-poll progress lines rather than putting 50k of them on the build log
+		TaskListener quietListener = Mockito.mock(TaskListener.class, Mockito.withSettings().stubOnly());
+		Mockito.when(quietListener.getLogger()).thenReturn(new PrintStream(OutputStream.nullOutputStream(), false));
+		return new CloudFormationStackSet(stubOnlyClient, "foo", quietListener, sleepStrategy);
+	}
 
 	private static void runWithASmallStack(ThrowingRunnable body) throws Throwable {
 		Throwable[] thrown = new Throwable[1];
@@ -299,10 +320,12 @@ public class CloudFormationStackSetTest {
 		DescribeStackSetResponse done = DescribeStackSetResponse.builder()
 				.stackSet(StackSet.builder().status(StackSetStatus.DELETED).build()).build();
 		int[] calls = {0};
-		Mockito.when(client.describeStackSet(Mockito.any(DescribeStackSetRequest.class)))
+		CloudFormationClient stubOnly = Mockito.mock(CloudFormationClient.class, Mockito.withSettings().stubOnly());
+		Mockito.when(stubOnly.describeStackSet(Mockito.any(DescribeStackSetRequest.class)))
 				.thenAnswer(invocation -> ++calls[0] < POLLS ? pending : done);
+		CloudFormationStackSet subject = this.stackSetWithStubOnlyClient(stubOnly);
 
-		runWithASmallStack(() -> stackSet.waitForStackState(StackSetStatus.DELETED, Duration.ofMillis(1)));
+		runWithASmallStack(() -> subject.waitForStackState(StackSetStatus.DELETED, NO_WAIT));
 
 		Assertions.assertThat(calls[0]).isEqualTo(POLLS);
 	}
@@ -315,10 +338,12 @@ public class CloudFormationStackSetTest {
 		DescribeStackSetOperationResponse done = DescribeStackSetOperationResponse.builder()
 				.stackSetOperation(StackSetOperation.builder().status(StackSetOperationStatus.SUCCEEDED).build()).build();
 		int[] calls = {0};
-		Mockito.when(client.describeStackSetOperation(Mockito.any(DescribeStackSetOperationRequest.class)))
+		CloudFormationClient stubOnly = Mockito.mock(CloudFormationClient.class, Mockito.withSettings().stubOnly());
+		Mockito.when(stubOnly.describeStackSetOperation(Mockito.any(DescribeStackSetOperationRequest.class)))
 				.thenAnswer(invocation -> ++calls[0] < POLLS ? running : done);
+		CloudFormationStackSet subject = this.stackSetWithStubOnlyClient(stubOnly);
 
-		runWithASmallStack(() -> stackSet.waitForOperationToComplete(operationId, Duration.ofMillis(1)));
+		runWithASmallStack(() -> subject.waitForOperationToComplete(operationId, NO_WAIT));
 
 		Assertions.assertThat(calls[0]).isEqualTo(POLLS);
 	}

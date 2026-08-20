@@ -45,6 +45,7 @@ import software.amazon.awssdk.services.cloudformation.model.UpdateStackSetReques
 import software.amazon.awssdk.services.cloudformation.model.UpdateStackSetResponse;
 import hudson.model.TaskListener;
 
+import de.taimos.pipeline.aws.cloudformation.PollConfiguration;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -106,20 +107,14 @@ public class CloudFormationStackSet {
 	 * hours, so the poll count is unbounded in practice. They used to recurse once per poll, which
 	 * meant a long wait ended in StackOverflowError instead of a result; they are loops now.
 	 *
-	 * The floor matters because looping removed the crash that used to end a pollInterval: 0 wait
-	 * within a second. Zero would otherwise mean a tight loop against DescribeStackSet - and
-	 * waitForStackState has no throttling retry at all, so the first Throttling response would fail
-	 * the build. This mirrors the one-second floor the cfnUpdate/cfnDelete waiters already apply.
-	 */
-	private static final Duration DISABLED_POLL_INTERVAL = Duration.ofSeconds(1);
-
-	/**
-	 * Only substituted for a non-positive interval, matching CloudFormationStack.waiterConfig: every
-	 * positive value the user asked for, including sub-second ones, is honoured exactly.
+	 * The substitution for a non-positive interval matters because looping removed the crash that used
+	 * to end a pollInterval: 0 wait within a second: zero would otherwise mean a tight loop against
+	 * DescribeStackSet, and waitForStackState has no throttling retry at all, so the first Throttling
+	 * response would fail the build. It shares PollConfiguration.effectivePollInterval with the
+	 * CloudFormation waiters so the two cannot drift.
 	 */
 	private static void sleepBetweenPolls(Duration pollInterval) throws InterruptedException {
-		Duration interval = pollInterval.isZero() || pollInterval.isNegative() ? DISABLED_POLL_INTERVAL : pollInterval;
-		Thread.sleep(interval.toMillis());
+		Thread.sleep(PollConfiguration.effectivePollInterval(pollInterval).toMillis());
 	}
 
 	/**
