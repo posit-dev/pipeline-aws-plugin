@@ -410,7 +410,7 @@ The step returns the outputs of the stack as a map. It also contains special val
 
 When cfnUpdate creates a stack and the creation fails, the stack is deleted instead of being left in a broken state.
 
-To prevent running into rate limiting on the AWS API you can change the default polling interval of 1000 ms using the parameter `pollIntervall`. Using the value `0` disables event printing.
+To prevent running into rate limiting on the AWS API you can change the default polling interval of 1000 ms using the parameter `pollInterval`. Using the value `0` disables event printing.
 
 ```groovy
 def outputs = cfnUpdate(stack:'my-stack', file:'template.yaml', params:['InstanceType=t2.nano'], keepParams:['Version'], timeoutInMinutes:10, tags:['TagName=Value'], notificationARNs:['arn:aws:sns:us-east-1:993852309656:topic'], pollInterval:1000)
@@ -462,7 +462,7 @@ Note: When creating a stack, either `file` or `url` are required. When updating 
 
 Remove the given stack from CloudFormation.
 
-To prevent running into rate limiting on the AWS API you can change the default polling interval of 1000 ms using the parameter `pollIntervall`. Using the value `0` disables event printing.  
+To prevent running into rate limiting on the AWS API you can change the default polling interval of 1000 ms using the parameter `pollInterval`. Using the value `0` disables event printing.  
 
 Note: When deleting a stack only 'stack' parameter is required.
 
@@ -502,7 +502,7 @@ The step returns the outputs of the stack as a map. It also contains special val
 * `jenkinsStackUpdateStatus` - "true"/"false" whether the stack was modified or not
 
 
-To prevent running into rate limiting on the AWS API you can change the default polling interval of 1000 ms using the parameter `pollIntervall`. Using the value `0` disables event printing.
+To prevent running into rate limiting on the AWS API you can change the default polling interval of 1000 ms using the parameter `pollInterval`. Using the value `0` disables event printing.
 
 ```groovy
 cfnCreateChangeSet(stack:'my-stack', changeSet:'my-change-set', file:'template.yaml', params:['InstanceType=t2.nano'], keepParams:['Version'], tags:['TagName=Value'], notificationARNs:['arn:aws:sns:us-east-1:993852309656:topic'], pollInterval:1000)
@@ -546,7 +546,7 @@ Note: When creating a change set for a non-existing stack, either `file` or `url
 
 Execute a previously created change set to create or update a CloudFormation stack. All the necessary information, like parameters and tags, were provided earlier when the change set was created.
 
-To prevent running into rate limiting on the AWS API you can change the default polling interval of 1000 ms using the parameter `pollIntervall`. Using the value `0` disables event printing.
+To prevent running into rate limiting on the AWS API you can change the default polling interval of 1000 ms using the parameter `pollInterval`. Using the value `0` disables event printing.
 
 ```groovy
 def outputs = cfnExecuteChangeSet(stack:'my-stack', changeSet:'my-change-set', pollInterval:1000)
@@ -556,7 +556,10 @@ def outputs = cfnExecuteChangeSet(stack:'my-stack', changeSet:'my-change-set', p
 
 Create a stack set. Similar options to cfnUpdate. Will monitor the resulting StackSet operation and will fail the build step if the operation does not complete successfully.
 
-To prevent running into rate limiting on the AWS API you can change the default polling interval of 1000 ms using the parameter `pollIntervall`. Using the value `0` disables event printing.
+`pollInterval` (default 1000 ms) is the delay between the `DescribeStackSetOperation` calls this step
+makes while waiting for the operation to finish; raise it to stay clear of AWS API rate limits. This
+step prints no stack events, so unlike `cfnUpdate` the value `0` does not disable anything - it just
+polls with no delay between calls.
 
 ```groovy
   cfnUpdateStackSet(stackSet:'myStackSet', url:'https://s3.amazonaws.com/my-templates-bucket/template.yaml')

@@ -42,7 +42,8 @@ import java.util.Set;
 public class CFNDeleteStackSetStep extends Step {
 
 	private final String stackSet;
-	private Long pollInterval = 1000L;
+	@Deprecated
+	private Long pollInterval;
 
 	@DataBoundConstructor
 	public CFNDeleteStackSetStep(String stackSet) {
@@ -53,10 +54,18 @@ public class CFNDeleteStackSetStep extends Step {
 		return this.stackSet;
 	}
 
+	/**
+	 * Never read: this step submits deleteStackSet and returns without waiting, so there is nothing
+	 * to poll. Kept so that existing pipelines passing pollInterval keep binding instead of failing,
+	 * but deprecated so the Snippet Generator - which reflects these accessors, there being no
+	 * config.jelly for this step - stops presenting it as live configuration.
+	 */
+	@Deprecated
 	public Long getPollInterval() {
 		return this.pollInterval;
 	}
 
+	@Deprecated
 	@DataBoundSetter
 	public void setPollInterval(Long pollInterval) {
 		this.pollInterval = pollInterval;
