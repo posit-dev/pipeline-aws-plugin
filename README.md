@@ -578,6 +578,14 @@ To automatically batch via region (find all stack instances, group them by regio
   cfnUpdateStackSet(stackSet:'myStackSet', url:'https://s3.amazonaws.com/my-templates-bucket/template.yaml', batchingOptions: [regions: true])
 ```
 
+The step returns the stack set's description as a map, so its fields are readable from a sandboxed
+pipeline:
+
+```groovy
+  def result = cfnUpdateStackSet(stackSet:'myStackSet', url:'https://s3.amazonaws.com/my-templates-bucket/template.yaml')
+  echo "stack set id: ${result.stackSet.stackSetId}"
+```
+
 ## cfnDeleteStackSet
 
 Deletes a stack set.
@@ -1148,8 +1156,12 @@ ebWaitOnEnvironmentHealth(
   `result.getRegistryId()` for `ecrSetRepositoryPolicy`'s single object becomes
   `result.registryId`, and `result[0].getImageTag()` for an element of `ecrDeleteImage`'s list
   becomes `result[0].imageTag`. `ecrListImages` already returned maps and is unchanged.
-* **Breaking**: `cfnCreateStackSet` and `cfnUpdateStackSet` now return a map instead of the AWS
-  `DescribeStackSet` response object - for example `result.stackSet.stackSetId`. The v2 response
+* With `pollInterval: 0` the CloudFormation waiter now polls once a second rather than continuously.
+  That value is documented as disabling event printing, which it still does; previously it also
+  reached the waiter's backoff, and with no attempt cap that meant calling `DescribeStacks` in a
+  tight loop for the whole timeout.
+* **Breaking**: `cfnUpdateStackSet` (including its `create: true` path) now returns a map instead of
+  the AWS `DescribeStackSet` response object - for example `result.stackSet.stackSetId`. The v2 response
   types are not `Serializable`, so holding the old value across a step boundary
   (`def r = cfnUpdateStackSet(...); echo "${r}"`) would have failed the build with
   `NotSerializableException`. As with the ECR steps, sandboxed pipelines could not read fields off

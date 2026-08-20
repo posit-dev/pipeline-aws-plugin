@@ -177,6 +177,7 @@ public class CFNUpdateStackSetStepTest {
 
 		jenkinsRule.assertLogContains("stackSetId=foo:1234", jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0)));
 	}
+
 	@Test
 	public void doNotCreateNonExistantStack() throws Exception {
 		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "cfnTest");

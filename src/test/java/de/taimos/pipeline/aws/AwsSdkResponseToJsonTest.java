@@ -65,18 +65,27 @@ public class AwsSdkResponseToJsonTest {
 		assertThat(map).containsKey("parameters");
 	}
 
+	/**
+	 * v1's unset members were not uniformly null: its generated getters lazily initialised list and
+	 * map members, so Jackson saw - and emitted - an empty collection for those while unset scalars
+	 * came through as null. Verified against aws-java-sdk-cloudformation 1.12.780, whose round-trip
+	 * of an otherwise-empty ValidateTemplateResult produced
+	 * {"parameters":[],"capabilities":[],"capabilitiesReason":null,"declaredTransforms":[]}.
+	 *
+	 * A pipeline written against that does response.capabilities.contains('CAPABILITY_IAM') without
+	 * a null guard, so turning these into nulls would be a breaking change dressed up as fidelity.
+	 */
 	@Test
-	public void unsetCollectionsStayNullAsUnderV1() throws Exception {
-		// v2's builders fill unset list/map members with an auto-construct empty collection, so a
-		// naive conversion would hand the pipeline [] where v1 handed it null.
+	public void unsetCollectionsStayEmptyAndUnsetScalarsStayNullAsUnderV1() throws Exception {
 		ValidateTemplateResponse result = ValidateTemplateResponse.builder()
 				.description("myDescription")
 				.build();
 
 		Map<String, Object> map = AwsSdkResponseToJson.convertToMap(result);
 
-		assertThat(map).containsEntry("capabilities", null);
-		assertThat(map).containsEntry("declaredTransforms", null);
-		assertThat(map).containsEntry("parameters", null);
+		assertThat(map).containsEntry("capabilities", List.of());
+		assertThat(map).containsEntry("declaredTransforms", List.of());
+		assertThat(map).containsEntry("parameters", List.of());
+		assertThat(map).containsEntry("capabilitiesReason", null);
 	}
 }

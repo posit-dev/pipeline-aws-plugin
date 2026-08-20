@@ -21,8 +21,8 @@
 
 package de.taimos.pipeline.aws.cloudformation;
 
-import software.amazon.awssdk.core.waiters.WaiterOverrideConfiguration;
 import software.amazon.awssdk.core.retry.backoff.FixedDelayBackoffStrategy;
+import software.amazon.awssdk.core.waiters.WaiterOverrideConfiguration;
 import software.amazon.awssdk.services.cloudformation.CloudFormationClient;
 import software.amazon.awssdk.services.cloudformation.model.CloudFormationException;
 import software.amazon.awssdk.services.cloudformation.model.Capability;
@@ -46,6 +46,7 @@ import software.amazon.awssdk.services.cloudformation.model.Tag;
 import software.amazon.awssdk.services.cloudformation.model.UpdateStackRequest;
 import hudson.model.TaskListener;
 
+import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -154,19 +155,31 @@ public class CloudFormationStack {
 	}
 
 	/**
+	 * pollInterval: 0 is documented as "disables event printing", and EventPrinter honours that by
+	 * skipping its loop. It says nothing about how often the waiter itself should call DescribeStacks,
+	 * so the backoff is floored here: a zero fixed delay combined with the unbounded attempt budget
+	 * below would busy-poll the CloudFormation API for the whole timeout.
+	 */
+	private static final Duration MIN_WAITER_BACKOFF = Duration.ofSeconds(1);
+
+	/**
 	 * v1 drove the waiters with a PollingStrategy built from a custom TimeOutRetryStrategy and a
 	 * FixedDelayStrategy. v2 expresses both directly, so that class is gone: waitTimeout replaces
 	 * the retry strategy and a fixed backoff replaces the delay strategy.
 	 */
 	static WaiterOverrideConfiguration waiterConfig(PollConfiguration pollConfiguration) {
+		Duration backoff = pollConfiguration.getPollInterval();
+		if (backoff.compareTo(MIN_WAITER_BACKOFF) < 0) {
+			backoff = MIN_WAITER_BACKOFF;
+		}
 		return WaiterOverrideConfiguration.builder()
 				.waitTimeout(pollConfiguration.getTimeout())
-				.backoffStrategy(FixedDelayBackoffStrategy.create(pollConfiguration.getPollInterval()))
+				.backoffStrategy(FixedDelayBackoffStrategy.create(backoff))
 				// Every generated CloudFormation waiter defaults to 120 attempts, and v2 stops at
 				// whichever of maxAttempts or waitTimeout comes first. Leaving the default would cap
-				// each wait at 120 polls - about two minutes with the default one second interval,
-				// and immediately with pollInterval: 0 - regardless of the configured timeout.
-				// v1's polling strategy had no attempt cap and ran until the timeout elapsed.
+				// each wait at 120 polls - about two minutes with the default one second interval -
+				// regardless of the configured timeout. v1's polling strategy had no attempt cap and
+				// ran until the timeout elapsed.
 				.maxAttempts(Integer.MAX_VALUE)
 				.build();
 	}

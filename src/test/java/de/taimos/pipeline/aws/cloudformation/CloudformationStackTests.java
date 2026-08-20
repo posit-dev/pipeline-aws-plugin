@@ -1,10 +1,11 @@
 package de.taimos.pipeline.aws.cloudformation;
 
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.core.exception.SdkClientException;
-import software.amazon.awssdk.services.cloudformation.model.DescribeStackEventsRequest;
+import software.amazon.awssdk.core.retry.backoff.FixedDelayBackoffStrategy;
 import software.amazon.awssdk.core.waiters.WaiterOverrideConfiguration;
 import software.amazon.awssdk.services.cloudformation.CloudFormationClient;
-import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
+import software.amazon.awssdk.services.cloudformation.model.DescribeStackEventsRequest;
 import software.amazon.awssdk.services.cloudformation.model.CloudFormationException;
 import software.amazon.awssdk.services.cloudformation.model.Capability;
 import software.amazon.awssdk.services.cloudformation.model.Change;
@@ -75,6 +76,26 @@ public class CloudformationStackTests {
 		Assertions.assertThat(config.waitTimeout()).contains(Duration.ofHours(2));
 		long pollsWithinTimeout = pollConfiguration.getTimeout().toMillis() / pollConfiguration.getPollInterval().toMillis();
 		Assertions.assertThat(config.maxAttempts().orElse(0)).isGreaterThanOrEqualTo((int) pollsWithinTimeout);
+	}
+
+	/**
+	 * pollInterval: 0 is documented as disabling event printing, and EventPrinter skips its loop for
+	 * it - but it also reaches the waiter's backoff. FixedDelayBackoffStrategy accepts a zero delay
+	 * rather than rejecting it, so combined with the unbounded attempt budget above the waiter would
+	 * call DescribeStacks in a tight loop for the whole timeout. The backoff is floored instead.
+	 */
+	@Test
+	public void waiterBackoffIsFlooredWhenEventPrintingIsDisabled() {
+		PollConfiguration pollConfiguration = PollConfiguration.builder()
+				.timeout(Duration.ofMinutes(10))
+				.pollInterval(Duration.ZERO)
+				.build();
+
+		WaiterOverrideConfiguration config = CloudFormationStack.waiterConfig(pollConfiguration);
+
+		Assertions.assertThat(config.waitTimeout()).contains(Duration.ofMinutes(10));
+		Assertions.assertThat(config.backoffStrategy())
+				.contains(FixedDelayBackoffStrategy.create(Duration.ofSeconds(1)));
 	}
 
 	@Test
