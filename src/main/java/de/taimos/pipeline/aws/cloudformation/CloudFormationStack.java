@@ -155,12 +155,13 @@ public class CloudFormationStack {
 	}
 
 	/**
-	 * pollInterval: 0 is documented as "disables event printing", and EventPrinter honours that by
-	 * skipping its loop. It says nothing about how often the waiter itself should call DescribeStacks,
-	 * so the backoff is floored here: a zero fixed delay combined with the unbounded attempt budget
-	 * below would busy-poll the CloudFormation API for the whole timeout.
+	 * Only substituted for a non-positive pollInterval. 0 is documented as "disables event printing",
+	 * which EventPrinter honours by skipping its loop, but it says nothing about how often the waiter
+	 * itself should call DescribeStacks - and a zero fixed delay combined with the unbounded attempt
+	 * budget below would busy-poll the CloudFormation API for the whole timeout. Every positive
+	 * interval, including sub-second ones, is passed through exactly as v1's FixedDelayStrategy did.
 	 */
-	private static final Duration MIN_WAITER_BACKOFF = Duration.ofSeconds(1);
+	private static final Duration DISABLED_POLL_INTERVAL_BACKOFF = Duration.ofSeconds(1);
 
 	/**
 	 * v1 drove the waiters with a PollingStrategy built from a custom TimeOutRetryStrategy and a
@@ -169,8 +170,8 @@ public class CloudFormationStack {
 	 */
 	static WaiterOverrideConfiguration waiterConfig(PollConfiguration pollConfiguration) {
 		Duration backoff = pollConfiguration.getPollInterval();
-		if (backoff.compareTo(MIN_WAITER_BACKOFF) < 0) {
-			backoff = MIN_WAITER_BACKOFF;
+		if (backoff.isZero() || backoff.isNegative()) {
+			backoff = DISABLED_POLL_INTERVAL_BACKOFF;
 		}
 		return WaiterOverrideConfiguration.builder()
 				.waitTimeout(pollConfiguration.getTimeout())

@@ -586,6 +586,17 @@ pipeline:
   echo "stack set id: ${result.stackSet.stackSetId}"
 ```
 
+`create` defaults to `true`, so a missing stack set is created. Passing `create: false` skips
+creation instead, and in that case the step returns `null` rather than a map - guard the return
+value if you use it:
+
+```groovy
+  def result = cfnUpdateStackSet(stackSet:'myStackSet', url:'...', create: false)
+  if (result != null) {
+    echo "stack set id: ${result.stackSet.stackSetId}"
+  }
+```
+
 ## cfnDeleteStackSet
 
 Deletes a stack set.
@@ -1156,10 +1167,13 @@ ebWaitOnEnvironmentHealth(
   `result.getRegistryId()` for `ecrSetRepositoryPolicy`'s single object becomes
   `result.registryId`, and `result[0].getImageTag()` for an element of `ecrDeleteImage`'s list
   becomes `result[0].imageTag`. `ecrListImages` already returned maps and is unchanged.
-* With `pollInterval: 0` the CloudFormation waiter now polls once a second rather than continuously.
-  That value is documented as disabling event printing, which it still does; previously it also
-  reached the waiter's backoff, and with no attempt cap that meant calling `DescribeStacks` in a
-  tight loop for the whole timeout.
+* With `pollInterval: 0`, the waiters behind `cfnUpdate`, `cfnDelete` and the change-set steps now
+  poll once a second rather than continuously. That value is documented as disabling event printing,
+  which it still does; previously it also reached the waiter's backoff, and with no attempt cap that
+  meant calling `DescribeStacks` in a tight loop for the whole timeout. Every positive interval,
+  including sub-second ones, is still passed through exactly. The stack-set steps
+  (`cfnUpdateStackSet`, `cfnDeleteStackSet`) poll through their own loop rather than an SDK waiter
+  and are unchanged, so `pollInterval: 0` there still means no delay between calls.
 * **Breaking**: `cfnUpdateStackSet` (including its `create: true` path) now returns a map instead of
   the AWS `DescribeStackSet` response object - for example `result.stackSet.stackSetId`. The v2 response
   types are not `Serializable`, so holding the old value across a step boundary

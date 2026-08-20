@@ -98,6 +98,25 @@ public class CloudformationStackTests {
 				.contains(FixedDelayBackoffStrategy.create(Duration.ofSeconds(1)));
 	}
 
+	/**
+	 * pollInterval is in milliseconds, so sub-second values are legal and must reach the waiter
+	 * unchanged - the substitution above is only for the non-positive "event printing off" case.
+	 * Rounding 250 ms up to a second would let the waiter notice completion up to 750 ms after
+	 * EventPrinter's own loop already had.
+	 */
+	@Test
+	public void waiterBackoffHonoursSubSecondIntervalsExactly() {
+		PollConfiguration pollConfiguration = PollConfiguration.builder()
+				.timeout(Duration.ofMinutes(10))
+				.pollInterval(Duration.ofMillis(250))
+				.build();
+
+		WaiterOverrideConfiguration config = CloudFormationStack.waiterConfig(pollConfiguration);
+
+		Assertions.assertThat(config.backoffStrategy())
+				.contains(FixedDelayBackoffStrategy.create(Duration.ofMillis(250)));
+	}
+
 	@Test
 	public void stackExists() {
 		TaskListener taskListener = Mockito.mock(TaskListener.class);
