@@ -371,7 +371,8 @@ Will presign the bucket/key and return a url. Defaults to 1 minute duration, usi
 def url = s3PresignURL(bucket: 'mybucket', key: 'mykey')
 ```
 
-The duration can be overridden:
+The duration can be overridden, from 1 second up to 604800 (7 days, the maximum a SigV4
+query-parameter signature can express). Anything outside that range fails the step:
 ```groovy
 def url = s3PresignURL(bucket: 'mybucket', key: 'mykey', durationInSeconds: 300) //5 minutes
 ```
@@ -562,9 +563,9 @@ becomes `ACTIVE`; raise it to stay clear of AWS API rate limits. This step print
 unlike `cfnUpdate` the value `0` does not disable anything - it just polls with no delay between
 calls.
 
-Note that these waits have no timeout: they poll until the stack set reaches a terminal state.
-`timeoutInMinutes` and `timeoutInSeconds` are accepted for consistency with `cfnUpdate` but do not
-apply here.
+Note that these waits have no timeout: they poll until the stack set reaches a terminal state, for
+as long as that takes. `timeoutInMinutes` and `timeoutInSeconds` are accepted for consistency with
+`cfnUpdate` but do not apply here.
 
 ```groovy
   cfnUpdateStackSet(stackSet:'myStackSet', url:'https://s3.amazonaws.com/my-templates-bucket/template.yaml')
@@ -1195,6 +1196,10 @@ ebWaitOnEnvironmentHealth(
   the CRC32 checksum trailer that SDK 2.30 turned on by default. Several S3-compatible stores (MinIO
   among them) reject it. An `endpointUrl` naming a real AWS endpoint - a documented way to pin a
   regional endpoint - keeps the trailer, as does the no-override case.
+* A long `cfnUpdateStackSet` or `cfnDeleteStackSet` wait no longer fails with `StackOverflowError`.
+  Both waits were implemented as one level of recursion per poll, so an operation that polled more
+  times than the JVM stack could hold - hours at the default interval, a fraction of a second with
+  `pollInterval: 0` - died instead of returning. They are loops now.
 * The `cfnUpdateStackSet` documentation now states that its waits have no timeout and that
   `timeoutInMinutes`/`timeoutInSeconds`, while accepted, do not apply to them. This has always been
   the behaviour - nothing under the stack-set steps reads the timeout - it was simply undocumented.

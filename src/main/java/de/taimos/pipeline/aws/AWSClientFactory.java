@@ -322,8 +322,10 @@ public class AWSClientFactory implements Serializable {
 	 * The test is whether the endpoint is an AWS host, not merely whether an override is set:
 	 * endpointUrl is also the documented way to pin a real AWS regional endpoint (see
 	 * getV2RegionForEndpoint), and there is no reason to give up the integrity trailer for those.
-	 * parseRegionFromEndpoint returning null is the same "not an amazonaws.com host" test used to
-	 * resolve the signing region, so the two decisions cannot disagree.
+	 * It reuses parseRegionFromEndpoint as the "is this an amazonaws.com host" test - the same parse
+	 * the region resolution falls back to. Note that it is only a fallback there: an explicit
+	 * AWS_REGION wins, so the signing region and this decision can legitimately read different
+	 * things (region from the variable, host from the URL).
 	 *
 	 * This lives here rather than in AbstractS3Step because the endpoint override is only known at
 	 * this point; the knob itself is on S3BaseClientBuilder, so it covers the async client too.

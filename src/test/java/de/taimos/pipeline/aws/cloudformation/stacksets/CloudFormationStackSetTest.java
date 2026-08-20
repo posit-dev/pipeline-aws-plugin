@@ -256,6 +256,45 @@ public class CloudFormationStackSetTest {
 				.describeStackSet(Mockito.any(DescribeStackSetRequest.class));
 	}
 
+	/**
+	 * Neither stack-set wait has a timeout, and a multi-account operation runs for hours, so the
+	 * number of polls is unbounded in practice. Both waits used to recurse once per poll, which meant
+	 * a long wait died with StackOverflowError rather than returning; 50k polls is comfortably past
+	 * the default stack depth and completes in well under a second at a zero interval.
+	 */
+	private static final int POLLS_PAST_STACK_DEPTH = 50_000;
+
+	@Test
+	public void waitForStackStateSurvivesManyPolls() throws InterruptedException {
+		DescribeStackSetResponse running = DescribeStackSetResponse.builder()
+				.stackSet(StackSet.builder().status(StackSetStatus.ACTIVE).build()).build();
+		DescribeStackSetResponse done = DescribeStackSetResponse.builder()
+				.stackSet(StackSet.builder().status(StackSetStatus.DELETED).build()).build();
+		int[] calls = {0};
+		Mockito.when(client.describeStackSet(Mockito.any(DescribeStackSetRequest.class)))
+				.thenAnswer(invocation -> ++calls[0] < POLLS_PAST_STACK_DEPTH ? running : done);
+
+		stackSet.waitForStackState(StackSetStatus.DELETED, Duration.ZERO);
+
+		Assertions.assertThat(calls[0]).isEqualTo(POLLS_PAST_STACK_DEPTH);
+	}
+
+	@Test
+	public void waitForOperationToCompleteSurvivesManyPolls() throws InterruptedException {
+		String operationId = UUID.randomUUID().toString();
+		DescribeStackSetOperationResponse running = DescribeStackSetOperationResponse.builder()
+				.stackSetOperation(StackSetOperation.builder().status(StackSetOperationStatus.RUNNING).build()).build();
+		DescribeStackSetOperationResponse done = DescribeStackSetOperationResponse.builder()
+				.stackSetOperation(StackSetOperation.builder().status(StackSetOperationStatus.SUCCEEDED).build()).build();
+		int[] calls = {0};
+		Mockito.when(client.describeStackSetOperation(Mockito.any(DescribeStackSetOperationRequest.class)))
+				.thenAnswer(invocation -> ++calls[0] < POLLS_PAST_STACK_DEPTH ? running : done);
+
+		stackSet.waitForOperationToComplete(operationId, Duration.ZERO);
+
+		Assertions.assertThat(calls[0]).isEqualTo(POLLS_PAST_STACK_DEPTH);
+	}
+
 	@Test
 	public void waitForOperationToComplete() throws InterruptedException {
 		String operationId = UUID.randomUUID().toString();

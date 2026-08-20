@@ -101,20 +101,40 @@ public class CloudFormationStackSet {
 		return result;
 	}
 
+	/**
+	 * A loop rather than the self-call this used to be. Neither this wait nor the one below has a
+	 * timeout, and a stack-set operation across many accounts runs for hours, so recursing once per
+	 * poll meant a long wait ended in StackOverflowError instead of a result - immediately so with
+	 * pollInterval: 0. Both are tail calls, so looping is otherwise behaviour-preserving.
+	 */
 	DescribeStackSetResponse waitForStackState(StackSetStatus expectedStatus, Duration pollInterval) throws InterruptedException {
-		DescribeStackSetResponse result = describe();
-		this.listener.getLogger().println("stackSetId=" + result.stackSet().stackSetId() + " status=" + result.stackSet().statusAsString());
-		StackSetStatus currentStatus = result.stackSet().status();
-		if (currentStatus == expectedStatus) {
-			this.listener.getLogger().println("Stack set operation completed successfully");
-			return result;
-		} else {
+		while (true) {
+			DescribeStackSetResponse result = describe();
+			this.listener.getLogger().println("stackSetId=" + result.stackSet().stackSetId() + " status=" + result.stackSet().statusAsString());
+			StackSetStatus currentStatus = result.stackSet().status();
+			if (currentStatus == expectedStatus) {
+				this.listener.getLogger().println("Stack set operation completed successfully");
+				return result;
+			}
 			Thread.sleep(pollInterval.toMillis());
-			return waitForStackState(expectedStatus, pollInterval);
 		}
 	}
 
 	DescribeStackSetOperationResponse waitForOperationToComplete(String operationId, Duration pollInterval) throws InterruptedException {
+		while (true) {
+			DescribeStackSetOperationResponse result = this.pollOperationOnce(operationId);
+			if (result != null) {
+				return result;
+			}
+			Thread.sleep(pollInterval.toMillis());
+		}
+	}
+
+	/**
+	 * One poll of the operation: the response once it has finished, or null while it is still running.
+	 * Split out so the wait above can be a loop - see waitForStackState for why that matters.
+	 */
+	private DescribeStackSetOperationResponse pollOperationOnce(String operationId) {
 		this.listener.getLogger().println("Waiting on operationId=" + operationId);
 		DescribeStackSetOperationResponse result = describeStackOperation(operationId, 0);
 		this.listener.getLogger().println("operationId=" + operationId + " status=" + result.stackSetOperation().statusAsString());
@@ -122,8 +142,7 @@ public class CloudFormationStackSet {
 		// UNKNOWN_TO_SDK_VERSION, which falls through to the default branch below
 		switch (result.stackSetOperation().status()) {
 			case RUNNING:
-				Thread.sleep(pollInterval.toMillis());
-				return waitForOperationToComplete(operationId, pollInterval);
+				return null;
 			case SUCCEEDED:
 				this.listener.getLogger().println("Stack set operation completed successfully");
 				return result;
