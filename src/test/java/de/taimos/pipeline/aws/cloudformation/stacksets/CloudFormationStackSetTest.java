@@ -281,14 +281,18 @@ public class CloudFormationStackSetTest {
 	 * and 50k real sleeps would cost minutes (worse on Windows before JDK 19, where Thread.sleep(1)
 	 * rounds up to the ~15 ms timer granularity).
 	 */
-	private CloudFormationStackSet nonSleepingStackSet(CloudFormationClient stubOnlyClient) {
+	private CloudFormationStackSet nonSleepingStackSet(CloudFormationClient stubOnlyClient, int[] sleeps) {
 		// discard the per-poll progress lines rather than putting 50k of them on the build log
 		TaskListener quietListener = Mockito.mock(TaskListener.class, Mockito.withSettings().stubOnly());
 		Mockito.when(quietListener.getLogger()).thenReturn(new PrintStream(OutputStream.nullOutputStream(), false));
 		return new CloudFormationStackSet(stubOnlyClient, "foo", quietListener, sleepStrategy) {
 			@Override
 			void sleepBetweenPolls(Duration pollInterval) {
-				// the clock is not what these tests are measuring
+				// counted rather than performed: the clock is not what these tests are measuring, but
+				// that the loop waits between polls at all is - without the count, deleting the
+				// sleepBetweenPolls call from either wait leaves the whole suite green, which is a
+				// tight DescribeStackSet loop with no throttling retry behind it.
+				sleeps[0]++;
 			}
 		};
 	}
@@ -342,11 +346,14 @@ public class CloudFormationStackSetTest {
 		CloudFormationClient stubOnly = Mockito.mock(CloudFormationClient.class, Mockito.withSettings().stubOnly());
 		Mockito.when(stubOnly.describeStackSet(Mockito.any(DescribeStackSetRequest.class)))
 				.thenAnswer(invocation -> ++calls[0] < POLLS ? pending : done);
-		CloudFormationStackSet subject = this.nonSleepingStackSet(stubOnly);
+		int[] sleeps = {0};
+		CloudFormationStackSet subject = this.nonSleepingStackSet(stubOnly, sleeps);
 
 		runWithASmallStack(() -> subject.waitForStackState(StackSetStatus.DELETED, PollConfiguration.DEFAULT.getPollInterval()));
 
 		Assertions.assertThat(calls[0]).isEqualTo(POLLS);
+		// one wait between each pair of polls
+		Assertions.assertThat(sleeps[0]).isEqualTo(POLLS - 1);
 	}
 
 	@Test
@@ -360,11 +367,14 @@ public class CloudFormationStackSetTest {
 		CloudFormationClient stubOnly = Mockito.mock(CloudFormationClient.class, Mockito.withSettings().stubOnly());
 		Mockito.when(stubOnly.describeStackSetOperation(Mockito.any(DescribeStackSetOperationRequest.class)))
 				.thenAnswer(invocation -> ++calls[0] < POLLS ? running : done);
-		CloudFormationStackSet subject = this.nonSleepingStackSet(stubOnly);
+		int[] sleeps = {0};
+		CloudFormationStackSet subject = this.nonSleepingStackSet(stubOnly, sleeps);
 
 		runWithASmallStack(() -> subject.waitForOperationToComplete(operationId, PollConfiguration.DEFAULT.getPollInterval()));
 
 		Assertions.assertThat(calls[0]).isEqualTo(POLLS);
+		// one wait between each pair of polls
+		Assertions.assertThat(sleeps[0]).isEqualTo(POLLS - 1);
 	}
 
 	/**

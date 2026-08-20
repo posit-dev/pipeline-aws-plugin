@@ -103,6 +103,13 @@ public class CloudFormationStackSet {
 	}
 
 	/**
+	 * See PollConfiguration.effectivePollInterval for the substitution this applies.
+	 */
+	static long pollSleepMillis(Duration pollInterval) {
+		return PollConfiguration.effectivePollInterval(pollInterval).toMillis();
+	}
+
+	/**
 	 * Neither of these waits has a timeout, and a stack-set operation across many accounts runs for
 	 * hours, so the poll count is unbounded in practice. They used to recurse once per poll, which
 	 * meant a long wait ended in StackOverflowError instead of a result; they are loops now.
@@ -112,12 +119,7 @@ public class CloudFormationStackSet {
 	 * DescribeStackSet, and waitForStackState has no throttling retry at all, so the first Throttling
 	 * response would fail the build. It shares PollConfiguration.effectivePollInterval with the
 	 * CloudFormation waiters so the two cannot drift.
-	 */
-	static long pollSleepMillis(Duration pollInterval) {
-		return PollConfiguration.effectivePollInterval(pollInterval).toMillis();
-	}
-
-	/**
+	 *
 	 * Overridden by the tests that drive tens of thousands of polls to prove these waits do not
 	 * recurse - what those exercise is the stack, not the clock. A seam here rather than a
 	 * sub-millisecond interval, so that they cannot be quietly turned into hour-long sleeps by a
