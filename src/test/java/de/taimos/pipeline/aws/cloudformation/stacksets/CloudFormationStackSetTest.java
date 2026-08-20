@@ -8,7 +8,9 @@ import de.taimos.pipeline.aws.cloudformation.PollConfiguration;
 import hudson.model.TaskListener;
 import org.assertj.core.api.Assertions;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.Timeout;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
@@ -19,6 +21,16 @@ import java.util.Collections;
 import java.util.UUID;
 
 public class CloudFormationStackSetTest {
+
+	/**
+	 * Nothing in this class legitimately takes more than a couple of seconds. The bound is here rather
+	 * than on individual methods because the two many-polls tests are only finite thanks to an
+	 * overridden sleep: if that seam is ever bypassed - the sleep inlined back into a loop, or
+	 * sleepBetweenPolls made private, final or static - they would each wait 50k x 1s rather than fail,
+	 * and a wedged build is much worse to diagnose than a red one.
+	 */
+	@Rule
+	public Timeout timeout = Timeout.seconds(120);
 
 	private CloudFormationClient client;
 	private SleepStrategy sleepStrategy;
@@ -276,10 +288,12 @@ public class CloudFormationStackSetTest {
 
 	/**
 	 * A stub-only client for the two high-count tests: the shared field is verified by other tests, so
-	 * it has to keep recording, but 50k recorded invocations per test is pure waste. The sleep is
-	 * overridden outright rather than passed a tiny interval - these tests are about the call stack,
-	 * and 50k real sleeps would cost minutes (worse on Windows before JDK 19, where Thread.sleep(1)
-	 * rounds up to the ~15 ms timer granularity).
+	 * it has to keep recording, but 50k recorded invocations per test is pure waste.
+	 *
+	 * The overridden sleep is load-bearing, not an optimisation. The callers pass the default poll
+	 * interval of one second, and the floor admits no cheaper value, so 50k real sleeps would be
+	 * roughly fourteen hours per test. The class timeout above is what turns losing this override into
+	 * a failure rather than a hung build.
 	 */
 	private CloudFormationStackSet nonSleepingStackSet(CloudFormationClient stubOnlyClient, int[] sleeps) {
 		// discard the per-poll progress lines rather than putting 50k of them on the build log
