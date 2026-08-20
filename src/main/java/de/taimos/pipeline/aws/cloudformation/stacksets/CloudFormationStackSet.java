@@ -102,10 +102,36 @@ public class CloudFormationStackSet {
 	}
 
 	/**
-	 * A loop rather than the self-call this used to be. Neither this wait nor the one below has a
-	 * timeout, and a stack-set operation across many accounts runs for hours, so recursing once per
-	 * poll meant a long wait ended in StackOverflowError instead of a result - immediately so with
-	 * pollInterval: 0. Both are tail calls, so looping is otherwise behaviour-preserving.
+	 * Neither of these waits has a timeout, and a stack-set operation across many accounts runs for
+	 * hours, so the poll count is unbounded in practice. They used to recurse once per poll, which
+	 * meant a long wait ended in StackOverflowError instead of a result; they are loops now.
+	 *
+	 * The floor matters because looping removed the crash that used to end a pollInterval: 0 wait
+	 * within a second. Zero would otherwise mean a tight loop against DescribeStackSet - and
+	 * waitForStackState has no throttling retry at all, so the first Throttling response would fail
+	 * the build. This mirrors the one-second floor the cfnUpdate/cfnDelete waiters already apply.
+	 */
+	private static final Duration DISABLED_POLL_INTERVAL = Duration.ofSeconds(1);
+
+	/**
+	 * Only substituted for a non-positive interval, matching CloudFormationStack.waiterConfig: every
+	 * positive value the user asked for, including sub-second ones, is honoured exactly.
+	 */
+	private static void sleepBetweenPolls(Duration pollInterval) throws InterruptedException {
+		Duration interval = pollInterval.isZero() || pollInterval.isNegative() ? DISABLED_POLL_INTERVAL : pollInterval;
+		Thread.sleep(interval.toMillis());
+	}
+
+	/**
+	 * DELETED is terminal, so waiting for ACTIVE and seeing it means the expected status will never
+	 * arrive - and under a loop that would poll forever, holding an executor until the build was
+	 * aborted. (The old recursive shape at least ended in StackOverflowError eventually.) An
+	 * unmodelled status gets the same treatment, mirroring pollOperationOnce's default and v1's
+	 * fromValue, which threw.
+	 *
+	 * The reverse direction still polls: waiting for DELETED while the set is still ACTIVE is a real
+	 * transition, so only DELETED and UNKNOWN_TO_SDK_VERSION are refused here rather than "any status
+	 * that is not the expected one".
 	 */
 	DescribeStackSetResponse waitForStackState(StackSetStatus expectedStatus, Duration pollInterval) throws InterruptedException {
 		while (true) {
@@ -116,7 +142,11 @@ public class CloudFormationStackSet {
 				this.listener.getLogger().println("Stack set operation completed successfully");
 				return result;
 			}
-			Thread.sleep(pollInterval.toMillis());
+			if (currentStatus == StackSetStatus.DELETED || currentStatus == StackSetStatus.UNKNOWN_TO_SDK_VERSION) {
+				throw new IllegalStateException("Stack set reached status=" + result.stackSet().statusAsString()
+						+ " while waiting for " + expectedStatus + "; it will not reach the expected status");
+			}
+			sleepBetweenPolls(pollInterval);
 		}
 	}
 
@@ -126,7 +156,7 @@ public class CloudFormationStackSet {
 			if (result != null) {
 				return result;
 			}
-			Thread.sleep(pollInterval.toMillis());
+			sleepBetweenPolls(pollInterval);
 		}
 	}
 

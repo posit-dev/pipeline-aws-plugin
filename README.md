@@ -560,8 +560,8 @@ Create a stack set. Similar options to cfnUpdate. Will monitor the resulting Sta
 `pollInterval` (default 1000 ms) is the delay between the calls this step makes while waiting -
 `DescribeStackSetOperation` for an update, or `DescribeStackSet` while a newly created stack set
 becomes `ACTIVE`; raise it to stay clear of AWS API rate limits. This step prints no stack events, so
-unlike `cfnUpdate` the value `0` does not disable anything - it just polls with no delay between
-calls.
+unlike `cfnUpdate` the value `0` does not disable anything; it is treated as one second, so that it
+cannot become a tight loop against the AWS API.
 
 Note that these waits have no timeout: they poll until the stack set reaches a terminal state, for
 as long as that takes. `timeoutInMinutes` and `timeoutInSeconds` are accepted for consistency with
@@ -1196,10 +1196,17 @@ ebWaitOnEnvironmentHealth(
   the CRC32 checksum trailer that SDK 2.30 turned on by default. Several S3-compatible stores (MinIO
   among them) reject it. An `endpointUrl` naming a real AWS endpoint - a documented way to pin a
   regional endpoint - keeps the trailer, as does the no-override case.
-* A long `cfnUpdateStackSet` or `cfnDeleteStackSet` wait no longer fails with `StackOverflowError`.
-  Both waits were implemented as one level of recursion per poll, so an operation that polled more
-  times than the JVM stack could hold - hours at the default interval, a fraction of a second with
-  `pollInterval: 0` - died instead of returning. They are loops now.
+* A long `cfnUpdateStackSet` wait no longer fails with `StackOverflowError`. Both of its waits - the
+  operation wait on update, and the wait for a newly created stack set to become `ACTIVE` - were
+  implemented as one level of recursion per poll, so an operation that polled more times than the JVM
+  stack could hold died instead of returning. They are loops now. (`cfnDeleteStackSet` does not wait
+  at all, so it was never affected.)
+* `cfnUpdateStackSet` now fails with the observed status if the stack set reaches a state it is not
+  waiting for - `DELETED` while waiting for `ACTIVE`, or a status this SDK does not model - instead of
+  polling for a state that can no longer arrive.
+* `pollInterval: 0` on `cfnUpdateStackSet` now polls once a second rather than continuously, matching
+  the treatment the `cfnUpdate`/`cfnDelete` waiters already had. Positive values, including sub-second
+  ones, are unchanged.
 * The `cfnUpdateStackSet` documentation now states that its waits have no timeout and that
   `timeoutInMinutes`/`timeoutInSeconds`, while accepted, do not apply to them. This has always been
   the behaviour - nothing under the stack-set steps reads the timeout - it was simply undocumented.
@@ -1208,9 +1215,8 @@ ebWaitOnEnvironmentHealth(
   which it still does; previously it also reached the waiter's backoff, and with no attempt cap that
   meant calling `DescribeStacks` in a tight loop for the whole timeout. Every positive interval,
   including sub-second ones, is still passed through exactly. `cfnUpdateStackSet` polls through its
-  own loop rather than an SDK waiter and is unchanged, so `pollInterval: 0` there still means no
-  delay between calls; `cfnDeleteStackSet` accepts `pollInterval` but never waits, so the parameter
-  has no effect at all.
+  own loop rather than an SDK waiter, and gets the same one-second floor (see above);
+  `cfnDeleteStackSet` accepts `pollInterval` but never waits, so the parameter has no effect at all.
 * **Breaking**: `cfnUpdateStackSet` (including its `create: true` path) now returns a map instead of
   the AWS `DescribeStackSet` response object - for example `result.stackSet.stackSetId`. The v2 response
   types are not `Serializable`, so holding the old value across a step boundary

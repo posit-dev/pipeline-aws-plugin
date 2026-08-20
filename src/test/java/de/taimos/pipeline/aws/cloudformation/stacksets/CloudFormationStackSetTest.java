@@ -257,30 +257,58 @@ public class CloudFormationStackSetTest {
 	}
 
 	/**
-	 * Neither stack-set wait has a timeout, and a multi-account operation runs for hours, so the
-	 * number of polls is unbounded in practice. Both waits used to recurse once per poll, which meant
-	 * a long wait died with StackOverflowError rather than returning; 50k polls is comfortably past
-	 * the default stack depth and completes in well under a second at a zero interval.
+	 * Neither stack-set wait has a timeout, and a multi-account operation runs for hours, so the poll
+	 * count is unbounded in practice. Both waits used to recurse once per poll, so a long wait died
+	 * with StackOverflowError rather than returning.
+	 *
+	 * Run on a thread with an explicitly small stack rather than relying on the ambient -Xss: the
+	 * failure being guarded against is invisible when these pass, so a larger default stack on some
+	 * future JDK or a surefire argLine would let the recursive shape pass silently. 2000 polls will
+	 * not fit in 128 KB of frames but costs a fraction of the recorded Mockito invocations that
+	 * out-running the default stack did.
 	 */
-	private static final int POLLS_PAST_STACK_DEPTH = 50_000;
+	private static final int POLLS = 2000;
+	private static final int SMALL_STACK_BYTES = 128 * 1024;
+
+	private static void runWithASmallStack(ThrowingRunnable body) throws Throwable {
+		Throwable[] thrown = new Throwable[1];
+		Thread thread = new Thread(null, () -> {
+			try {
+				body.run();
+			} catch (Throwable t) {
+				thrown[0] = t;
+			}
+		}, "poll", SMALL_STACK_BYTES);
+		thread.start();
+		thread.join();
+		if (thrown[0] != null) {
+			throw thrown[0];
+		}
+	}
+
+	private interface ThrowingRunnable {
+		void run() throws Exception;
+	}
 
 	@Test
-	public void waitForStackStateSurvivesManyPolls() throws InterruptedException {
-		DescribeStackSetResponse running = DescribeStackSetResponse.builder()
+	public void waitForStackStateSurvivesManyPolls() throws Throwable {
+		// ACTIVE -> DELETED is the transition this wait polls through, so it is the direction that
+		// exercises the loop; the losing branch covers the other one.
+		DescribeStackSetResponse pending = DescribeStackSetResponse.builder()
 				.stackSet(StackSet.builder().status(StackSetStatus.ACTIVE).build()).build();
 		DescribeStackSetResponse done = DescribeStackSetResponse.builder()
 				.stackSet(StackSet.builder().status(StackSetStatus.DELETED).build()).build();
 		int[] calls = {0};
 		Mockito.when(client.describeStackSet(Mockito.any(DescribeStackSetRequest.class)))
-				.thenAnswer(invocation -> ++calls[0] < POLLS_PAST_STACK_DEPTH ? running : done);
+				.thenAnswer(invocation -> ++calls[0] < POLLS ? pending : done);
 
-		stackSet.waitForStackState(StackSetStatus.DELETED, Duration.ZERO);
+		runWithASmallStack(() -> stackSet.waitForStackState(StackSetStatus.DELETED, Duration.ofMillis(1)));
 
-		Assertions.assertThat(calls[0]).isEqualTo(POLLS_PAST_STACK_DEPTH);
+		Assertions.assertThat(calls[0]).isEqualTo(POLLS);
 	}
 
 	@Test
-	public void waitForOperationToCompleteSurvivesManyPolls() throws InterruptedException {
+	public void waitForOperationToCompleteSurvivesManyPolls() throws Throwable {
 		String operationId = UUID.randomUUID().toString();
 		DescribeStackSetOperationResponse running = DescribeStackSetOperationResponse.builder()
 				.stackSetOperation(StackSetOperation.builder().status(StackSetOperationStatus.RUNNING).build()).build();
@@ -288,11 +316,41 @@ public class CloudFormationStackSetTest {
 				.stackSetOperation(StackSetOperation.builder().status(StackSetOperationStatus.SUCCEEDED).build()).build();
 		int[] calls = {0};
 		Mockito.when(client.describeStackSetOperation(Mockito.any(DescribeStackSetOperationRequest.class)))
-				.thenAnswer(invocation -> ++calls[0] < POLLS_PAST_STACK_DEPTH ? running : done);
+				.thenAnswer(invocation -> ++calls[0] < POLLS ? running : done);
 
-		stackSet.waitForOperationToComplete(operationId, Duration.ZERO);
+		runWithASmallStack(() -> stackSet.waitForOperationToComplete(operationId, Duration.ofMillis(1)));
 
-		Assertions.assertThat(calls[0]).isEqualTo(POLLS_PAST_STACK_DEPTH);
+		Assertions.assertThat(calls[0]).isEqualTo(POLLS);
+	}
+
+	/**
+	 * DELETED is terminal, so waiting for ACTIVE has to fail rather than poll forever - as a loop it
+	 * would otherwise hold an executor until the build was aborted.
+	 */
+	@Test
+	public void waitForStackStateFailsOnATerminalStatusItIsNotWaitingFor() {
+		Mockito.when(client.describeStackSet(Mockito.any(DescribeStackSetRequest.class)))
+				.thenReturn(DescribeStackSetResponse.builder()
+						.stackSet(StackSet.builder().status(StackSetStatus.DELETED).build()).build());
+
+		Assertions.assertThatThrownBy(() -> stackSet.waitForStackState(StackSetStatus.ACTIVE, Duration.ZERO))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("DELETED");
+	}
+
+	/**
+	 * A status the pinned SDK does not model arrives as UNKNOWN_TO_SDK_VERSION, which must not be
+	 * polled forever either.
+	 */
+	@Test
+	public void waitForStackStateFailsOnAnUnmodelledStatus() {
+		Mockito.when(client.describeStackSet(Mockito.any(DescribeStackSetRequest.class)))
+				.thenReturn(DescribeStackSetResponse.builder()
+						.stackSet(StackSet.builder().status("SOMETHING_NEW").build()).build());
+
+		Assertions.assertThatThrownBy(() -> stackSet.waitForStackState(StackSetStatus.ACTIVE, Duration.ZERO))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("SOMETHING_NEW");
 	}
 
 	@Test
