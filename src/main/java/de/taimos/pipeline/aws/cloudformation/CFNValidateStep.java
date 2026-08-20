@@ -40,7 +40,6 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
 import software.amazon.awssdk.services.cloudformation.CloudFormationClient;
-import software.amazon.awssdk.services.cloudformation.model.CloudFormationException;
 import software.amazon.awssdk.services.cloudformation.model.ValidateTemplateRequest;
 
 import de.taimos.pipeline.aws.AWSClientFactory;
@@ -127,8 +126,8 @@ public class CFNValidateStep extends Step {
 			new Thread("cfnValidate-" + file) {
 				@Override
 				public void run() {
-					CloudFormationClient client = AWSClientFactory.create(CloudFormationClient.builder(), Execution.this.getContext());
 					try {
+						CloudFormationClient client = AWSClientFactory.create(CloudFormationClient.builder(), Execution.this.getContext());
 						ValidateTemplateRequest.Builder request = ValidateTemplateRequest.builder();
 						if (template != null) {
 							request.templateBody(template);
@@ -137,7 +136,10 @@ public class CFNValidateStep extends Step {
 						}
 						ValidateTemplateResponse result = client.validateTemplate(request.build());
 						Execution.this.getContext().onSuccess(AwsSdkResponseToJson.convertToMap(result));
-					} catch (CloudFormationException e) {
+					} catch (Throwable e) {
+						// Everything has to reach onFailure: this runs on its own thread, so anything that
+						// escapes here (client construction failing on an unresolvable region, a bug in the
+						// response conversion) would leave the step never completing and the build hanging.
 						Execution.this.getContext().onFailure(e);
 					}
 				}

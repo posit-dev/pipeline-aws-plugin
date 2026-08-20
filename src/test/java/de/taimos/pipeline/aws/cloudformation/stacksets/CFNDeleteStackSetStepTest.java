@@ -5,6 +5,7 @@ import de.taimos.pipeline.aws.AWSClientFactory;
 import de.taimos.pipeline.aws.AWSUtilFactory;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -28,6 +29,12 @@ public class CFNDeleteStackSetStepTest {
 			assertEquals("foo", s);
 			return stackSet;
 		});
+	}
+
+	@After
+	public void tearDownSdk() {
+		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSUtilFactory.setStackSetSupplier(null);
 	}
 
 	@Test

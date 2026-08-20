@@ -2,6 +2,7 @@ package de.taimos.pipeline.aws.cloudformation;
 
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.cloudformation.model.DescribeStackEventsRequest;
+import software.amazon.awssdk.core.waiters.WaiterOverrideConfiguration;
 import software.amazon.awssdk.services.cloudformation.CloudFormationClient;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.services.cloudformation.model.CloudFormationException;
@@ -54,6 +55,26 @@ public class CloudformationStackTests {
 	@After
 	public void noMoreEventPrinterInteractions() {
 		Mockito.verifyNoMoreInteractions(this.eventPrinter);
+	}
+
+	/**
+	 * v2 waiters stop at whichever of maxAttempts or waitTimeout comes first, and every generated
+	 * CloudFormation waiter defaults to 120 attempts. Leaving that default silently caps a wait at
+	 * 120 polls - roughly two minutes with the default interval - so a stack operation that takes
+	 * longer aborts while CloudFormation is still working.
+	 */
+	@Test
+	public void waiterAttemptBudgetDoesNotEndTheWaitBeforeTheTimeout() {
+		PollConfiguration pollConfiguration = PollConfiguration.builder()
+				.timeout(Duration.ofHours(2))
+				.pollInterval(Duration.ofSeconds(1))
+				.build();
+
+		WaiterOverrideConfiguration config = CloudFormationStack.waiterConfig(pollConfiguration);
+
+		Assertions.assertThat(config.waitTimeout()).contains(Duration.ofHours(2));
+		long pollsWithinTimeout = pollConfiguration.getTimeout().toMillis() / pollConfiguration.getPollInterval().toMillis();
+		Assertions.assertThat(config.maxAttempts().orElse(0)).isGreaterThanOrEqualTo((int) pollsWithinTimeout);
 	}
 
 	@Test

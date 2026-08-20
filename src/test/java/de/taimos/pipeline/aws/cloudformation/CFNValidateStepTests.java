@@ -12,6 +12,7 @@ import org.assertj.core.api.Assertions;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -29,6 +30,11 @@ public class CFNValidateStepTests {
 	public void setupSdk() throws Exception {
 		this.cloudFormation = Mockito.mock(CloudFormationClient.class);
 		AWSClientFactory.setV2FactoryDelegate((x) -> this.cloudFormation);
+	}
+
+	@After
+	public void tearDownSdk() {
+		AWSClientFactory.setV2FactoryDelegate(null);
 	}
 
 	@Test

@@ -9,6 +9,7 @@ import de.taimos.pipeline.aws.AWSClientFactory;
 import hudson.model.Run;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -29,6 +30,11 @@ public class CFNExportsStepTests {
 		// stubs below meaningful
 		Mockito.when(this.cloudFormation.listExportsPaginator(Mockito.any(ListExportsRequest.class)))
 				.thenAnswer(invocation -> new ListExportsIterable(this.cloudFormation, invocation.getArgument(0)));
+	}
+
+	@After
+	public void tearDownSdk() {
+		AWSClientFactory.setV2FactoryDelegate(null);
 	}
 
 	@Test

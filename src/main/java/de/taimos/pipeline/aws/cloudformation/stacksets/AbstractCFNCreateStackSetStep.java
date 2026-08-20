@@ -23,7 +23,10 @@ package de.taimos.pipeline.aws.cloudformation.stacksets;
 
 
 import software.amazon.awssdk.services.cloudformation.CloudFormationClient;
+import de.taimos.pipeline.aws.AwsSdkResponseToJson;
 import software.amazon.awssdk.services.cloudformation.model.DescribeStackSetResponse;
+
+import java.util.Map;
 import software.amazon.awssdk.services.cloudformation.model.OnFailure;
 import software.amazon.awssdk.services.cloudformation.model.Parameter;
 import software.amazon.awssdk.services.cloudformation.model.Tag;
@@ -85,7 +88,7 @@ abstract class AbstractCFNCreateStackSetStep extends TemplateStepBase {
 		this.executionRoleName = executionRoleName;
 	}
 
-	abstract static class Execution<C extends AbstractCFNCreateStackSetStep> extends SynchronousNonBlockingStepExecution<DescribeStackSetResponse> {
+	abstract static class Execution<C extends AbstractCFNCreateStackSetStep> extends SynchronousNonBlockingStepExecution<Map<String, Object>> {
 
 		private final transient C step;
 
@@ -111,7 +114,7 @@ abstract class AbstractCFNCreateStackSetStep extends TemplateStepBase {
 		}
 
 		@Override
-		public DescribeStackSetResponse run() throws Exception {
+		public Map<String, Object> run() throws Exception {
 
 			final String stackSet = this.getStackSet();
 			final Boolean create = this.getCreate();
@@ -122,16 +125,24 @@ abstract class AbstractCFNCreateStackSetStep extends TemplateStepBase {
 
 			CloudFormationClient client = AWSClientFactory.create(CloudFormationClient.builder(), Execution.this.getContext(), Execution.this.getEnvVars());
 			CloudFormationStackSet cfnStackSet = AWSUtilFactory.newCFStackSet(client, stackSet, Execution.this.getListener(), SleepStrategy.EXPONENTIAL_BACKOFF_STRATEGY);
+			// Converted to a map on the way out: the v2 response types are not Serializable, so
+			// handing one to the pipeline fails with NotSerializableException as soon as the value
+			// outlives a step boundary, and their fields are unreadable from a sandboxed script
+			// anyway. This matches what the ECR steps return.
 			if (cfnStackSet.exists()) {
 				Collection<Parameter> parameters = ParameterParser.parseWithKeepParams(getWorkspace(), getStep());
-				return Execution.this.whenStackSetExists(parameters, getStep().getAwsTags(Execution.this));
+				return toMap(Execution.this.whenStackSetExists(parameters, getStep().getAwsTags(Execution.this)));
 			} else if (create) {
 				Collection<Parameter> parameters = ParameterParser.parse(getWorkspace(), getStep());
-				return Execution.this.whenStackSetMissing(parameters, getStep().getAwsTags(Execution.this));
+				return toMap(Execution.this.whenStackSetMissing(parameters, getStep().getAwsTags(Execution.this)));
 			} else {
 				Execution.this.getListener().getLogger().println("No stack set found with the name=" + stackSet + " and skipped creation due to configuration.");
 				return null;
 			}
+		}
+
+		private static Map<String, Object> toMap(DescribeStackSetResponse response) {
+			return response == null ? null : AwsSdkResponseToJson.convertToMap(response);
 		}
 
 		protected CloudFormationStackSet getCfnStackSet() {

@@ -6,6 +6,7 @@ import de.taimos.pipeline.aws.AWSUtilFactory;
 import hudson.model.Run;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -36,6 +37,12 @@ public class CFNDescribeStackTests {
 			return stack;
 		});
 		stackCounter = 0;
+	}
+
+	@After
+	public void tearDownSdk() {
+		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSUtilFactory.setStackSupplier(null);
 	}
 
 	@Test

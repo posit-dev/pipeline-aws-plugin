@@ -36,7 +36,6 @@ public class ECRDeleteImagesStepTests {
 		AWSClientFactory.setV2FactoryDelegate(null);
 	}
 
-
 	private void stubDeletedImage() {
 		Mockito.when(this.ecr.batchDeleteImage(Mockito.any(BatchDeleteImageRequest.class)))
 				.thenReturn(BatchDeleteImageResponse.builder()
@@ -45,6 +44,7 @@ public class ECRDeleteImagesStepTests {
 						.build()
 				);
 	}
+
 	@Test
 	public void deleteImage() throws Exception {
 		this.stubDeletedImage();

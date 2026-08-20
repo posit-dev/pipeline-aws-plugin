@@ -1,7 +1,9 @@
 package de.taimos.pipeline.aws.cloudformation.stacksets;
 
 import software.amazon.awssdk.services.cloudformation.CloudFormationClient;
+import software.amazon.awssdk.services.cloudformation.model.DescribeStackSetResponse;
 import software.amazon.awssdk.services.cloudformation.model.Parameter;
+import software.amazon.awssdk.services.cloudformation.model.StackSet;
 import software.amazon.awssdk.services.cloudformation.model.StackInstanceSummary;
 import software.amazon.awssdk.services.cloudformation.model.StackSetOperationPreferences;
 import software.amazon.awssdk.services.cloudformation.model.UpdateStackSetRequest;
@@ -13,6 +15,7 @@ import lombok.Value;
 import org.assertj.core.api.Assertions;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -48,6 +51,12 @@ public class CFNUpdateStackSetStepTest {
 			assertEquals("foo", s);
 			return stackSet;
 		});
+	}
+
+	@After
+	public void tearDownSdk() {
+		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSUtilFactory.setStackSetSupplier(null);
 	}
 
 	@Test
@@ -147,6 +156,27 @@ public class CFNUpdateStackSetStepTest {
 		Mockito.verify(stackSet).update(nullable(String.class), nullable(String.class), Mockito.any(UpdateStackSetRequest.class));
 	}
 
+	@Test
+	public void returnsASerializableMapAcrossAStepBoundary() throws Exception {
+		// The step used to hand back the raw AWS response. Under v2 that object is not Serializable,
+		// so keeping it live across a step boundary - as `def result = ...; echo "..."` does - would
+		// fail the build with NotSerializableException. It is converted to a map instead.
+		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "cfnTest");
+		Mockito.when(stackSet.exists()).thenReturn(true);
+		Mockito.when(stackSet.update(nullable(String.class), nullable(String.class), Mockito.any(UpdateStackSetRequest.class)))
+				.thenReturn(UpdateStackSetResponse.builder().operationId(UUID.randomUUID().toString()).build());
+		Mockito.when(stackSet.describe()).thenReturn(DescribeStackSetResponse.builder()
+				.stackSet(StackSet.builder().stackSetName("foo").stackSetId("foo:1234").build())
+				.build());
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  def result = cfnUpdateStackSet(stackSet: 'foo')\n"
+				+ "  echo \"stackSetId=${result.stackSet.stackSetId}\"\n"
+				+ "}\n", true)
+		);
+
+		jenkinsRule.assertLogContains("stackSetId=foo:1234", jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0)));
+	}
 	@Test
 	public void doNotCreateNonExistantStack() throws Exception {
 		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "cfnTest");

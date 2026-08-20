@@ -37,6 +37,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import java.util.function.Supplier;
 
@@ -61,14 +62,30 @@ class EventPrinter {
 	 */
 	void waitAndPrintStackEvents(String stack, Supplier<?> waitOperation, PollConfiguration pollConfiguration) throws ExecutionException {
 		this.listener.getLogger().println("Setting up a polling strategy to poll every " + pollConfiguration.getPollInterval() + " for a maximum of " + pollConfiguration.getTimeout());
-		Future<?> waitResult = CompletableFuture.supplyAsync(waitOperation);
+		Future<?> waitResult = CompletableFuture.supplyAsync(waitOperation, waiterExecutor(stack));
 		this.waitAndPrintEvents(stack, pollConfiguration, waitResult);
 	}
 
 	void waitAndPrintChangeSetEvents(String stack, String changeSet, Supplier<?> waitOperation, PollConfiguration pollConfiguration) throws ExecutionException {
 		this.listener.getLogger().println("Setting up a polling strategy to poll every " + pollConfiguration.getPollInterval() + " for a maximum of " + pollConfiguration.getTimeout());
-		Future<?> waitResult = CompletableFuture.supplyAsync(waitOperation);
+		Future<?> waitResult = CompletableFuture.supplyAsync(waitOperation, waiterExecutor(stack));
 		this.waitAndPrintEvents(stack, pollConfiguration, waitResult);
+	}
+
+	/**
+	 * A dedicated daemon thread per wait, rather than the common pool.
+	 *
+	 * The waiter blocks for as long as the configured timeout - ten minutes by default, and users
+	 * set hours for large stacks - so running it on ForkJoinPool.commonPool() would park a worker
+	 * that Jenkins core and other plugins share. v1's waiter.runAsync used the SDK's own executor
+	 * and never touched the common pool either.
+	 */
+	private static Executor waiterExecutor(String stack) {
+		return runnable -> {
+			Thread thread = new Thread(runnable, "cfn-waiter-" + stack);
+			thread.setDaemon(true);
+			thread.start();
+		};
 	}
 
 	private void waitAndPrintEvents(String stack, PollConfiguration pollConfiguration, Future<?> waitResult) throws ExecutionException {

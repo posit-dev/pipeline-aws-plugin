@@ -2,6 +2,8 @@ package de.taimos.pipeline.aws;
 
 import software.amazon.awssdk.core.SdkField;
 import software.amazon.awssdk.core.SdkPojo;
+import software.amazon.awssdk.core.util.SdkAutoConstructList;
+import software.amazon.awssdk.core.util.SdkAutoConstructMap;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,7 +20,10 @@ import java.util.Map;
  *
  * The keys are deliberately the lower-camel-case form of each member name, which is what the v1
  * output produced and what existing Jenkinsfiles index into. Members that are not set are emitted
- * as explicit nulls, again matching v1: a pipeline may test for their presence.
+ * as explicit nulls, again matching v1: a pipeline may test for their presence. That includes
+ * unset list and map members, which the v2 builders fill with an auto-construct empty collection -
+ * emitting those as [] or {} would turn a v1 `if (response.capabilities == null)` into a
+ * silently-false test, so they are mapped back to null.
  *
  * One difference from v1: the sdkResponseMetadata and sdkHttpMetadata keys are gone. They appeared
  * only because Jackson picked up inherited HTTP plumbing getters, were never documented, and are
@@ -44,6 +49,10 @@ public class AwsSdkResponseToJson {
 	}
 
 	private static Object convertValue(Object value) {
+		if (value instanceof SdkAutoConstructList || value instanceof SdkAutoConstructMap) {
+			// The builder's placeholder for "never set", not an empty collection the service returned.
+			return null;
+		}
 		if (value instanceof SdkPojo) {
 			return convertToMap((SdkPojo) value);
 		}

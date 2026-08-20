@@ -162,6 +162,12 @@ public class CloudFormationStack {
 		return WaiterOverrideConfiguration.builder()
 				.waitTimeout(pollConfiguration.getTimeout())
 				.backoffStrategy(FixedDelayBackoffStrategy.create(pollConfiguration.getPollInterval()))
+				// Every generated CloudFormation waiter defaults to 120 attempts, and v2 stops at
+				// whichever of maxAttempts or waitTimeout comes first. Leaving the default would cap
+				// each wait at 120 polls - about two minutes with the default one second interval,
+				// and immediately with pollInterval: 0 - regardless of the configured timeout.
+				// v1's polling strategy had no attempt cap and ran until the timeout elapsed.
+				.maxAttempts(Integer.MAX_VALUE)
 				.build();
 	}
 

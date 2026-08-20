@@ -10,12 +10,12 @@ import hudson.model.Run;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.junit.Assert;
-import org.mockito.ArgumentCaptor;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 public class ECRListImagesStepTests {
@@ -63,6 +63,12 @@ public class ECRListImagesStepTests {
 		Mockito.verify(this.ecr, Mockito.times(2)).listImages(Mockito.any(ListImagesRequest.class));
 	}
 
+	private void stubSinglePage() {
+		Mockito.when(this.ecr.listImages(Mockito.any(ListImagesRequest.class)))
+				.thenReturn(ListImagesResponse.builder()
+						.imageIds(ImageIdentifier.builder().imageDigest("id1").build())
+						.build());
+	}
 
 	/**
 	 * JenkinsListImageFilter stopped being an SDK subclass, so both the Stapler binding of
@@ -72,10 +78,7 @@ public class ECRListImagesStepTests {
 	 */
 	@Test
 	public void passesTheTagStatusFilterThrough() throws Exception {
-		Mockito.when(this.ecr.listImages(Mockito.any(ListImagesRequest.class)))
-				.thenReturn(ListImagesResponse.builder()
-						.imageIds(ImageIdentifier.builder().imageDigest("id1").build())
-						.build());
+		this.stubSinglePage();
 
 		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "ecrListFiltered");
 		job.setDefinition(new CpsFlowDefinition(""
@@ -96,10 +99,7 @@ public class ECRListImagesStepTests {
 	 */
 	@Test
 	public void omitsTheFilterWhenNotGiven() throws Exception {
-		Mockito.when(this.ecr.listImages(Mockito.any(ListImagesRequest.class)))
-				.thenReturn(ListImagesResponse.builder()
-						.imageIds(ImageIdentifier.builder().imageDigest("id1").build())
-						.build());
+		this.stubSinglePage();
 
 		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "ecrListUnfiltered");
 		job.setDefinition(new CpsFlowDefinition(""

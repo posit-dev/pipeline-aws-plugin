@@ -115,6 +115,12 @@ public class LambdaVersionCleanupStepTest {
 				.functionName("foo")
 				.build()
 		);
+		// The point of the step: v1 is newer than the cutoff and must be left alone.
+		Mockito.verify(this.awsLambda, Mockito.never()).deleteFunction(DeleteFunctionRequest.builder()
+				.qualifier("v1")
+				.functionName("foo")
+				.build()
+		);
 	}
 
 	@Test
@@ -138,6 +144,11 @@ public class LambdaVersionCleanupStepTest {
 
 		Mockito.verify(this.awsLambda).deleteFunction(DeleteFunctionRequest.builder()
 				.qualifier("v2")
+				.functionName("foo")
+				.build()
+		);
+		Mockito.verify(this.awsLambda, Mockito.never()).deleteFunction(DeleteFunctionRequest.builder()
+				.qualifier("v1")
 				.functionName("foo")
 				.build()
 		);
@@ -206,5 +217,9 @@ public class LambdaVersionCleanupStepTest {
 				.functionName("foo2")
 				.build()
 		);
+		// "bar" is an AWS::Baz::Function, so the resource-type filter must keep the step away from it
+		// entirely - both when listing its versions and when deleting.
+		Mockito.verify(this.awsLambda, Mockito.never()).deleteFunction(Mockito.<DeleteFunctionRequest>argThat(r -> "bar".equals(r.functionName())));
+		Mockito.verify(this.awsLambda, Mockito.times(2)).listVersionsByFunction(Mockito.any(ListVersionsByFunctionRequest.class));
 	}
 }

@@ -12,6 +12,7 @@ import hudson.model.Result;
 import hudson.model.Run;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -38,6 +39,12 @@ public class CFNCreateChangeSetTests {
 			assertEquals("foo", s);
 			return stack;
 		});
+	}
+
+	@After
+	public void tearDownSdk() {
+		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSUtilFactory.setStackSupplier(null);
 	}
 
 	@Test

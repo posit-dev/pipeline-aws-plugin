@@ -34,10 +34,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Pins the map shape that {@code cfnValidate} returns to the pipeline.
  *
  * The keys here are part of the plugin's public contract: Jenkinsfiles index into this map
- * (for example {@code response.capabilities}). The conversion is a blind Jackson round-trip over
- * the SDK response object, so the key names are derived from the SDK model's accessors rather
- * than from any code in this plugin - which means an SDK upgrade can silently rename them. This
- * test exists to make that loud.
+ * (for example {@code response.capabilities}). The conversion walks the SDK response's own field
+ * metadata ({@code SdkPojo.sdkFields()}), so the key names are derived from the SDK model's member
+ * names rather than from any code in this plugin - which means an SDK upgrade can silently rename
+ * them. This test exists to make that loud.
  *
  * The nested {@code parameters} keys and the explicit-null behaviour are pinned by
  * {@code CFNValidateStepTests.validateWithUrlSuccess}, which asserts the rendered map end to end
@@ -63,5 +63,20 @@ public class AwsSdkResponseToJsonTest {
 		assertThat(map).containsEntry("capabilities", List.of("CAPABILITY_IAM"));
 		assertThat(map).containsEntry("declaredTransforms", List.of("AWS::Serverless-2016-10-31"));
 		assertThat(map).containsKey("parameters");
+	}
+
+	@Test
+	public void unsetCollectionsStayNullAsUnderV1() throws Exception {
+		// v2's builders fill unset list/map members with an auto-construct empty collection, so a
+		// naive conversion would hand the pipeline [] where v1 handed it null.
+		ValidateTemplateResponse result = ValidateTemplateResponse.builder()
+				.description("myDescription")
+				.build();
+
+		Map<String, Object> map = AwsSdkResponseToJson.convertToMap(result);
+
+		assertThat(map).containsEntry("capabilities", null);
+		assertThat(map).containsEntry("declaredTransforms", null);
+		assertThat(map).containsEntry("parameters", null);
 	}
 }

@@ -726,10 +726,19 @@ deleted.
 
 ## ecrListImages
 
-List images in a repository.
+List images in a repository. The step returns a list of maps, each with `imageTag` and
+`imageDigest`.
 
 ```groovy
 def images = ecrListImages(repositoryName: 'foo')
+```
+
+Pass `filter` to restrict the result by tag status. `tagStatus` accepts `TAGGED`, `UNTAGGED` or
+`ANY` (the default):
+
+```groovy
+def untagged = ecrListImages(repositoryName: 'foo', filter: [tagStatus: 'UNTAGGED'])
+ecrDeleteImage(repositoryName: 'foo', imageIds: untagged)
 ```
 
 ## ecrLogin
@@ -1135,8 +1144,17 @@ ebWaitOnEnvironmentHealth(
   previous return value was not possible from a *sandboxed* pipeline - Jenkins script security
   rejects field and getter access on SDK model classes - so for sandboxed scripts only `echo`
   output changes, and those values are now readable. Scripts running outside the sandbox (approved
-  scripts, shared libraries) could call `getRegistryId()` or `getImageTag()` on the returned object
-  and must switch to the map keys. `ecrListImages` already returned maps and is unchanged.
+  scripts, shared libraries) read those objects at different levels and must switch to the map keys:
+  `result.getRegistryId()` for `ecrSetRepositoryPolicy`'s single object becomes
+  `result.registryId`, and `result[0].getImageTag()` for an element of `ecrDeleteImage`'s list
+  becomes `result[0].imageTag`. `ecrListImages` already returned maps and is unchanged.
+* **Breaking**: `cfnCreateStackSet` and `cfnUpdateStackSet` now return a map instead of the AWS
+  `DescribeStackSet` response object - for example `result.stackSet.stackSetId`. The v2 response
+  types are not `Serializable`, so holding the old value across a step boundary
+  (`def r = cfnUpdateStackSet(...); echo "${r}"`) would have failed the build with
+  `NotSerializableException`. As with the ECR steps, sandboxed pipelines could not read fields off
+  the previous value at all; non-sandboxed scripts calling `getStackSet()` must switch to the map
+  keys.
 * The `ecrDeleteImage` documentation previously named the step `ecrDeleteImages`, which does not
   exist; copying that example failed with `No such DSL method`. The docs now match the step.
 * `createDeployment` no longer fails with a `NullPointerException` when `waitForCompletion` is
