@@ -48,4 +48,22 @@ public class CFNDeleteStackSetStepTest {
 		jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
 		Mockito.verify(stackSet).delete();
 	}
+
+	/**
+	 * pollInterval is dead for this step but still bindable, which is the only reason its accessors
+	 * survive. Without this case a later cleanup could delete them and break existing pipelines
+	 * without failing anything.
+	 */
+	@Test
+	public void stillAcceptsTheDeprecatedPollInterval() throws Exception {
+		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "cfnDeleteStackSetPollInterval");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  cfnDeleteStackSet(stackSet: 'foo', pollInterval: 25)\n"
+				+ "}\n", true)
+		);
+		jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+
+		Mockito.verify(stackSet).delete();
+	}
 }

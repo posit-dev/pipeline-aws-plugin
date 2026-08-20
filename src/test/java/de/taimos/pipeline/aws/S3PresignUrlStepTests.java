@@ -41,8 +41,18 @@ public class S3PresignUrlStepTests {
 	@Rule
 	public JenkinsRule jenkinsRule = new JenkinsRule();
 
+	/**
+	 * A JenkinsRule build's EnvVars include the controller process environment, and these tests assert
+	 * region-derived hostnames, so every variable that could change the signature has to be pinned -
+	 * not just the ones being set. AWS_DEFAULT_REGION is checked *before* AWS_REGION by
+	 * AWSClientFactory.getV2Region, AWS_ENDPOINT_URL would divert to the endpoint-override branch, and
+	 * an ambient AWS_SESSION_TOKEN would add X-Amz-Security-Token. An empty value in withEnv unsets.
+	 */
 	private static final String CREDS = "'AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE', "
 			+ "'AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', "
+			+ "'AWS_SESSION_TOKEN=', "
+			+ "'AWS_ENDPOINT_URL=', "
+			+ "'AWS_DEFAULT_REGION=us-west-2', "
 			+ "'AWS_REGION=us-west-2'";
 
 	private Run runPresign(String jobName, String args) throws Exception {
@@ -123,5 +133,66 @@ public class S3PresignUrlStepTests {
 		Run run = this.runPresign("s3PresignPathStyle", "bucket: 'foo', key: 'bar', pathStyleAccessEnabled: true");
 
 		this.jenkinsRule.assertLogContains("url=https://s3.us-west-2.amazonaws.com/foo/bar?", run);
+	}
+
+	/**
+	 * createS3Presigner has its own endpoint-override branch, separate from configureV2Builder's, and
+	 * this is the combination it exists for: a third-party store addressed path-style.
+	 */
+	@Test
+	public void honoursAnEndpointOverride() throws Exception {
+		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "s3PresignEndpoint");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  withEnv([" + CREDS + "]) {\n"
+				+ "    withEnv(['AWS_ENDPOINT_URL=https://minio.mycompany.com']) {\n"
+				+ "      def url = s3PresignURL(bucket: 'foo', key: 'bar', pathStyleAccessEnabled: true)\n"
+				+ "      echo \"url=${url}\"\n"
+				+ "    }\n"
+				+ "  }\n"
+				+ "}\n", true)
+		);
+		Run run = this.jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+
+		this.jenkinsRule.assertLogContains("url=https://minio.mycompany.com/foo/bar?", run);
+		this.jenkinsRule.assertLogContains("X-Amz-Signature=", run);
+	}
+
+	/**
+	 * SigV4 query-parameter presigning is capped at 7 days. v1 signed an over-long expiry and left S3
+	 * to reject the URL later; v2's signer throws. Rejecting it in the constructor turns an SDK
+	 * IllegalArgumentException deep in the step into a message naming the parameter.
+	 */
+	@Test
+	public void sevenDaysIsAccepted() throws Exception {
+		Run run = this.runPresign("s3PresignMaxDuration", "bucket: 'foo', key: 'bar', durationInSeconds: 604800");
+
+		this.jenkinsRule.assertLogContains("X-Amz-Expires=604800", run);
+	}
+
+	@Test
+	public void durationsBeyondSevenDaysAreRejected() throws Exception {
+		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "s3PresignTooLong");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  s3PresignURL(bucket: 'foo', key: 'bar', durationInSeconds: 604801)\n"
+				+ "}\n", true)
+		);
+		Run run = this.jenkinsRule.assertBuildStatus(hudson.model.Result.FAILURE, job.scheduleBuild2(0));
+
+		this.jenkinsRule.assertLogContains("durationInSeconds must be between 1 and 604800", run);
+	}
+
+	@Test
+	public void zeroDurationIsRejected() throws Exception {
+		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "s3PresignZero");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  s3PresignURL(bucket: 'foo', key: 'bar', durationInSeconds: 0)\n"
+				+ "}\n", true)
+		);
+		Run run = this.jenkinsRule.assertBuildStatus(hudson.model.Result.FAILURE, job.scheduleBuild2(0));
+
+		this.jenkinsRule.assertLogContains("durationInSeconds must be between 1 and 604800", run);
 	}
 }

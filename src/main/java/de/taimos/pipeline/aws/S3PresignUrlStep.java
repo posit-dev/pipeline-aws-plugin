@@ -56,6 +56,14 @@ public class S3PresignUrlStep extends AbstractS3Step {
 	 */
 	private static final List<String> SUPPORTED_HTTP_METHODS = Arrays.asList("GET", "PUT", "DELETE", "HEAD");
 
+	/**
+	 * SigV4 query-parameter presigning is valid for at least one second and at most seven days, and
+	 * v2's signer throws IllegalArgumentException outside that range. v1 signed an over-long expiry
+	 * and left S3 to reject the resulting URL, so this is validated up front to name the parameter
+	 * rather than surface an SDK message from inside the step.
+	 */
+	private static final int MAX_DURATION_IN_SECONDS = 604800;
+
 	private final String bucket;
 	private final String key;
 	private final int durationInSeconds;
@@ -69,6 +77,8 @@ public class S3PresignUrlStep extends AbstractS3Step {
 		if (durationInSeconds == null) {
 			this.durationInSeconds = 60; //60 seconds
 		} else {
+			Preconditions.checkArgument(durationInSeconds >= 1 && durationInSeconds <= MAX_DURATION_IN_SECONDS,
+					"durationInSeconds must be between 1 and %s (7 days), got %s", MAX_DURATION_IN_SECONDS, durationInSeconds);
 			this.durationInSeconds = durationInSeconds;
 		}
 		if (httpMethod == null) {
@@ -163,10 +173,15 @@ public class S3PresignUrlStep extends AbstractS3Step {
 					return presigner.presignHeadObject(r -> r
 							.signatureDuration(signatureDuration)
 							.headObjectRequest(HeadObjectRequest.builder().bucket(bucket).key(key).build())).url();
-				default:
+				case "GET":
 					return presigner.presignGetObject(r -> r
 							.signatureDuration(signatureDuration)
 							.getObjectRequest(GetObjectRequest.builder().bucket(bucket).key(key).build())).url();
+				default:
+					// Unreachable while the constructor validates against SUPPORTED_HTTP_METHODS, but
+					// the two lists are independent: adding a verb there and not here would otherwise
+					// silently presign a GET, which is what the constructor check exists to prevent.
+					throw new IllegalStateException("Unsupported httpMethod: " + httpMethod);
 			}
 		}
 

@@ -25,6 +25,7 @@ import hudson.EnvVars;
 
 import java.time.Duration;
 import org.junit.Test;
+import org.mockito.Mockito;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
@@ -32,6 +33,8 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.awscore.retry.AwsRetryStrategy;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.retries.api.RetryStrategy;
 
@@ -210,6 +213,45 @@ public class AWSClientFactoryV2Test {
 		// v1's default socket timeout, carried over unchanged
 		assertThat(AWSClientFactory.getV2SocketTimeout(new EnvVars())).isEqualTo(Duration.ofMillis(50000));
 		assertThat(AWSClientFactory.getV2SyncHttpClient(vars)).isNotNull();
+	}
+
+	private static S3ClientBuilder configureS3Builder(String endpointUrl) {
+		EnvVars vars = new EnvVars();
+		vars.put(AWSClientFactory.AWS_REGION, "us-west-2");
+		vars.put(AWSClientFactory.AWS_ACCESS_KEY_ID, "AKIAEXAMPLE");
+		vars.put(AWSClientFactory.AWS_SECRET_ACCESS_KEY, "secret");
+		if (endpointUrl != null) {
+			vars.put(AWSClientFactory.AWS_ENDPOINT_URL, endpointUrl);
+		}
+		// a mock of the builder interface is also an SdkSyncClientBuilder, so the sync branch is happy
+		S3ClientBuilder builder = Mockito.mock(S3ClientBuilder.class, Mockito.RETURNS_SELF);
+		AWSClientFactory.configureV2Builder(builder, null, vars);
+		return builder;
+	}
+
+	/**
+	 * SDK 2.30 turned the CRC32 request trailer on by default, which some S3-compatible stores reject.
+	 * These three cases pin the whole rule, because a refactor of the instanceof/host check would
+	 * otherwise pass the entire suite: the relaxation is for non-AWS hosts only, and only for S3.
+	 */
+	@Test
+	public void checksumsAreRelaxedForANonAwsEndpoint() {
+		Mockito.verify(configureS3Builder("https://minio.mycompany.com"))
+				.requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED);
+	}
+
+	@Test
+	public void checksumsKeepTheSdkDefaultForARealAwsEndpoint() {
+		// endpointUrl is also the documented way to pin an AWS regional endpoint; those keep the
+		// integrity trailer.
+		Mockito.verify(configureS3Builder("https://s3.eu-west-1.amazonaws.com"), Mockito.never())
+				.requestChecksumCalculation(Mockito.any(RequestChecksumCalculation.class));
+	}
+
+	@Test
+	public void checksumsKeepTheSdkDefaultWithNoEndpointOverride() {
+		Mockito.verify(configureS3Builder(null), Mockito.never())
+				.requestChecksumCalculation(Mockito.any(RequestChecksumCalculation.class));
 	}
 
 	@Test

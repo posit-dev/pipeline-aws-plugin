@@ -556,10 +556,15 @@ def outputs = cfnExecuteChangeSet(stack:'my-stack', changeSet:'my-change-set', p
 
 Create a stack set. Similar options to cfnUpdate. Will monitor the resulting StackSet operation and will fail the build step if the operation does not complete successfully.
 
-`pollInterval` (default 1000 ms) is the delay between the `DescribeStackSetOperation` calls this step
-makes while waiting for the operation to finish; raise it to stay clear of AWS API rate limits. This
-step prints no stack events, so unlike `cfnUpdate` the value `0` does not disable anything - it just
-polls with no delay between calls.
+`pollInterval` (default 1000 ms) is the delay between the calls this step makes while waiting -
+`DescribeStackSetOperation` for an update, or `DescribeStackSet` while a newly created stack set
+becomes `ACTIVE`; raise it to stay clear of AWS API rate limits. This step prints no stack events, so
+unlike `cfnUpdate` the value `0` does not disable anything - it just polls with no delay between
+calls.
+
+Note that these waits have no timeout: they poll until the stack set reaches a terminal state.
+`timeoutInMinutes` and `timeoutInSeconds` are accepted for consistency with `cfnUpdate` but do not
+apply here.
 
 ```groovy
   cfnUpdateStackSet(stackSet:'myStackSet', url:'https://s3.amazonaws.com/my-templates-bucket/template.yaml')
@@ -1176,16 +1181,23 @@ ebWaitOnEnvironmentHealth(
   separate policy-document mechanism this step has never implemented - so a `POST` URL from this step
   was unlikely to have been usable in the first place. The README previously used `POST` in its own
   example; it now uses `PUT`.
+* **Breaking**: `s3PresignURL` now rejects a `durationInSeconds` outside 1..604800 (7 days) instead of
+  accepting it. SigV4 query-parameter presigning cannot express a longer expiry: v1 signed the URL
+  anyway and left S3 to reject it on use, while v2's signer throws, so the value is now checked up
+  front with a message naming the parameter.
 * `s3PresignURL` now honours `pathStyleAccessEnabled`, which reaches the presigner alongside the
   other S3 options.
 * `s3Delete`, `s3FindFiles` and `s3DoesObjectExist` now use the AWS SDK v2 S3 client. The
   `pathStyleAccessEnabled` and `payloadSigningEnabled` parameters still work; v2 has no direct
   equivalent of the latter, so it is expressed as disabling `aws-chunked` encoding, which is the
   closest thing to v1's "sign the body in one piece".
-* When `withAWS(endpointUrl: ...)` is in effect, S3 requests no longer add the CRC32 checksum
-  trailer that SDK 2.30 turned on by default. Several S3-compatible stores (MinIO among them) reject
-  it, and pointing these steps at such a store is exactly what `endpointUrl` is for. Requests to
-  real AWS endpoints are unaffected.
+* When `withAWS(endpointUrl: ...)` points at a host outside `amazonaws.com`, S3 requests no longer add
+  the CRC32 checksum trailer that SDK 2.30 turned on by default. Several S3-compatible stores (MinIO
+  among them) reject it. An `endpointUrl` naming a real AWS endpoint - a documented way to pin a
+  regional endpoint - keeps the trailer, as does the no-override case.
+* The `cfnUpdateStackSet` documentation now states that its waits have no timeout and that
+  `timeoutInMinutes`/`timeoutInSeconds`, while accepted, do not apply to them. This has always been
+  the behaviour - nothing under the stack-set steps reads the timeout - it was simply undocumented.
 * With `pollInterval: 0`, the waiters behind `cfnUpdate`, `cfnDelete` and the change-set steps now
   poll once a second rather than continuously. That value is documented as disabling event printing,
   which it still does; previously it also reached the waiter's backoff, and with no attempt cap that

@@ -265,7 +265,7 @@ public class AWSClientFactory implements Serializable {
 		if (StringUtils.isNotBlank(endpointUrl)) {
 			clientBuilder.region(getV2RegionForEndpoint(vars, endpointUrl));
 			clientBuilder.endpointOverride(URI.create(endpointUrl));
-			relaxChecksumsForThirdPartyEndpoint(clientBuilder);
+			relaxChecksumsForNonAwsEndpoint(clientBuilder, endpointUrl);
 		} else {
 			clientBuilder.region(getV2Region(vars));
 		}
@@ -294,6 +294,10 @@ public class AWSClientFactory implements Serializable {
 	 *
 	 * Nothing here configures an HTTP client or retries, because presigning is purely local: the
 	 * signature is computed in process and no request is sent.
+	 *
+	 * S3Presigner.Builder has no requestChecksumCalculation, so the relaxation applied to the clients
+	 * for non-AWS endpoints has no counterpart here - and needs none: a presigned PUT against SDK
+	 * 2.42 signs X-Amz-SignedHeaders=host only, adding no checksum header for a store to reject.
 	 */
 	public static S3Presigner createS3Presigner(S3Configuration serviceConfiguration, StepContext context, EnvVars vars) {
 		S3Presigner.Builder presigner = S3Presigner.builder()
@@ -312,15 +316,20 @@ public class AWSClientFactory implements Serializable {
 
 	/**
 	 * SDK 2.30 changed the S3 default for requestChecksumCalculation to WHEN_SUPPORTED, which adds a
-	 * CRC32 trailer to uploads. Several S3-compatible stores reject that, so an endpointUrl - the
-	 * documented way of pointing these steps at MinIO and friends - drops back to WHEN_REQUIRED.
-	 * Real AWS endpoints keep the SDK default.
+	 * CRC32 trailer to uploads. Several S3-compatible stores reject that, so pointing endpointUrl at
+	 * one drops back to WHEN_REQUIRED.
+	 *
+	 * The test is whether the endpoint is an AWS host, not merely whether an override is set:
+	 * endpointUrl is also the documented way to pin a real AWS regional endpoint (see
+	 * getV2RegionForEndpoint), and there is no reason to give up the integrity trailer for those.
+	 * parseRegionFromEndpoint returning null is the same "not an amazonaws.com host" test used to
+	 * resolve the signing region, so the two decisions cannot disagree.
 	 *
 	 * This lives here rather than in AbstractS3Step because the endpoint override is only known at
 	 * this point; the knob itself is on S3BaseClientBuilder, so it covers the async client too.
 	 */
-	private static void relaxChecksumsForThirdPartyEndpoint(Object clientBuilder) {
-		if (clientBuilder instanceof S3BaseClientBuilder) {
+	private static void relaxChecksumsForNonAwsEndpoint(Object clientBuilder, String endpointUrl) {
+		if (clientBuilder instanceof S3BaseClientBuilder && parseRegionFromEndpoint(endpointUrl) == null) {
 			((S3BaseClientBuilder<?, ?>) clientBuilder).requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED);
 		}
 	}

@@ -56,9 +56,10 @@ public class CFNDeleteStackSetStep extends Step {
 
 	/**
 	 * Never read: this step submits deleteStackSet and returns without waiting, so there is nothing
-	 * to poll. Kept so that existing pipelines passing pollInterval keep binding instead of failing,
-	 * but deprecated so the Snippet Generator - which reflects these accessors, there being no
-	 * config.jelly for this step - stops presenting it as live configuration.
+	 * to poll. Kept so that existing pipelines passing pollInterval keep binding instead of failing
+	 * with a "no such property" error, and deprecated to flag it as dead to anyone reading the class.
+	 * Dropping the 1000 ms default also stops uninstantiate from writing pollInterval: 1000 into every
+	 * snippet the generator produces for this step.
 	 */
 	@Deprecated
 	public Long getPollInterval() {
