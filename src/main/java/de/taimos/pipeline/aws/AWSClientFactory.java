@@ -45,10 +45,12 @@ import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
 import software.amazon.awssdk.core.client.builder.SdkSyncClientBuilder;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
+import software.amazon.awssdk.services.s3.S3BaseClientBuilder;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -261,6 +263,7 @@ public class AWSClientFactory implements Serializable {
 		if (StringUtils.isNotBlank(endpointUrl)) {
 			clientBuilder.region(getV2RegionForEndpoint(vars, endpointUrl));
 			clientBuilder.endpointOverride(URI.create(endpointUrl));
+			relaxChecksumsForThirdPartyEndpoint(clientBuilder);
 		} else {
 			clientBuilder.region(getV2Region(vars));
 		}
@@ -279,6 +282,21 @@ public class AWSClientFactory implements Serializable {
 		}
 
 		return clientBuilder;
+	}
+
+	/**
+	 * SDK 2.30 changed the S3 default for requestChecksumCalculation to WHEN_SUPPORTED, which adds a
+	 * CRC32 trailer to uploads. Several S3-compatible stores reject that, so an endpointUrl - the
+	 * documented way of pointing these steps at MinIO and friends - drops back to WHEN_REQUIRED.
+	 * Real AWS endpoints keep the SDK default.
+	 *
+	 * This lives here rather than in AbstractS3Step because the endpoint override is only known at
+	 * this point; the knob itself is on S3BaseClientBuilder, so it covers the async client too.
+	 */
+	private static void relaxChecksumsForThirdPartyEndpoint(Object clientBuilder) {
+		if (clientBuilder instanceof S3BaseClientBuilder) {
+			((S3BaseClientBuilder<?, ?>) clientBuilder).requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED);
+		}
 	}
 
 	static ClientOverrideConfiguration getV2OverrideConfiguration(EnvVars vars) {

@@ -1169,6 +1169,14 @@ ebWaitOnEnvironmentHealth(
   `result.getRegistryId()` for `ecrSetRepositoryPolicy`'s single object becomes
   `result.registryId`, and `result[0].getImageTag()` for an element of `ecrDeleteImage`'s list
   becomes `result[0].imageTag`. `ecrListImages` already returned maps and is unchanged.
+* `s3Delete`, `s3FindFiles` and `s3DoesObjectExist` now use the AWS SDK v2 S3 client. The
+  `pathStyleAccessEnabled` and `payloadSigningEnabled` parameters still work; v2 has no direct
+  equivalent of the latter, so it is expressed as disabling `aws-chunked` encoding, which is the
+  closest thing to v1's "sign the body in one piece".
+* When `withAWS(endpointUrl: ...)` is in effect, S3 requests no longer add the CRC32 checksum
+  trailer that SDK 2.30 turned on by default. Several S3-compatible stores (MinIO among them) reject
+  it, and pointing these steps at such a store is exactly what `endpointUrl` is for. Requests to
+  real AWS endpoints are unaffected.
 * With `pollInterval: 0`, the waiters behind `cfnUpdate`, `cfnDelete` and the change-set steps now
   poll once a second rather than continuously. That value is documented as disabling event printing,
   which it still does; previously it also reached the waiter's backoff, and with no attempt cap that

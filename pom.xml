@@ -185,6 +185,10 @@
             <artifactId>aws-java-sdk2-cloudformation</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.jenkins.plugins.aws-java-sdk2</groupId>
+            <artifactId>aws-java-sdk2-s3</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>credentials</artifactId>
         </dependency>

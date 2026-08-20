@@ -28,6 +28,13 @@ import org.kohsuke.stapler.DataBoundSetter;
 
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 
+import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
+import software.amazon.awssdk.services.s3.S3BaseClientBuilder;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.S3Configuration;
+
 public abstract class AbstractS3Step extends Step {
 
 	protected boolean pathStyleAccessEnabled = false;
@@ -83,10 +90,47 @@ public abstract class AbstractS3Step extends Step {
 			this.payloadSigningEnabled = payloadSigningEnabled;
 		}
 
+		/**
+		 * Still v1: s3Copy, s3Upload and s3Download go through TransferManager, which needs the
+		 * asynchronous client and so lands in the following commit. Removed with them.
+		 */
 		protected AmazonS3ClientBuilder createAmazonS3ClientBuilder() {
 			return AmazonS3ClientBuilder.standard()
 					.withPathStyleAccessEnabled(this.isPathStyleAccessEnabled())
 					.withPayloadSigningEnabled(this.isPayloadSigningEnabled());
+		}
+
+		public S3ClientBuilder createS3ClientBuilder() {
+			return this.applyTo(S3Client.builder());
+		}
+
+		/**
+		 * Only for S3TransferManager, which has no synchronous form.
+		 */
+		public S3AsyncClientBuilder createS3AsyncClientBuilder() {
+			return this.applyTo(S3AsyncClient.builder());
+		}
+
+		/**
+		 * v1 had pathStyleAccessEnabled and payloadSigningEnabled directly on the client builder;
+		 * v2 moves both under S3Configuration.
+		 *
+		 * pathStyleAccessEnabled maps across unchanged. payloadSigningEnabled has no exact v2
+		 * equivalent: v1 used it to sign the request body in one piece instead of relying on
+		 * aws-chunked signing, so the closest v2 expression is to turn chunked encoding off. Left
+		 * at the SDK default when the option is off, which is v1's default too.
+		 */
+		public S3Configuration createS3Configuration() {
+			S3Configuration.Builder configuration = S3Configuration.builder()
+					.pathStyleAccessEnabled(this.isPathStyleAccessEnabled());
+			if (this.isPayloadSigningEnabled()) {
+				configuration.chunkedEncodingEnabled(false);
+			}
+			return configuration.build();
+		}
+
+		private <B extends S3BaseClientBuilder<B, ?>> B applyTo(B builder) {
+			return builder.serviceConfiguration(this.createS3Configuration());
 		}
 	}
 
