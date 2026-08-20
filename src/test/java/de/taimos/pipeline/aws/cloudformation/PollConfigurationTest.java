@@ -41,6 +41,17 @@ public class PollConfigurationTest {
 	}
 
 	/**
+	 * Both consumers work in milliseconds - Thread.sleep for the stack-set loops, a fixed backoff for
+	 * the waiters - so an interval that rounds to zero there is treated as disabled rather than
+	 * honoured as "no delay".
+	 */
+	@Test
+	public void aSubMillisecondIntervalCountsAsDisabled() {
+		assertThat(PollConfiguration.effectivePollInterval(Duration.ofNanos(1))).isEqualTo(Duration.ofSeconds(1));
+		assertThat(PollConfiguration.effectivePollInterval(Duration.ofNanos(999_999))).isEqualTo(Duration.ofSeconds(1));
+	}
+
+	/**
 	 * pollInterval is in milliseconds, so sub-second values are legal and must survive untouched.
 	 */
 	@Test

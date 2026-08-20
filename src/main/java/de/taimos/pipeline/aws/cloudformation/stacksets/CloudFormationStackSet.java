@@ -113,8 +113,18 @@ public class CloudFormationStackSet {
 	 * response would fail the build. It shares PollConfiguration.effectivePollInterval with the
 	 * CloudFormation waiters so the two cannot drift.
 	 */
-	private static void sleepBetweenPolls(Duration pollInterval) throws InterruptedException {
-		Thread.sleep(PollConfiguration.effectivePollInterval(pollInterval).toMillis());
+	static long pollSleepMillis(Duration pollInterval) {
+		return PollConfiguration.effectivePollInterval(pollInterval).toMillis();
+	}
+
+	/**
+	 * Overridden by the tests that drive tens of thousands of polls to prove these waits do not
+	 * recurse - what those exercise is the stack, not the clock. A seam here rather than a
+	 * sub-millisecond interval, so that they cannot be quietly turned into hour-long sleeps by a
+	 * later change to how the interval is floored.
+	 */
+	void sleepBetweenPolls(Duration pollInterval) throws InterruptedException {
+		Thread.sleep(pollSleepMillis(pollInterval));
 	}
 
 	/**
@@ -141,7 +151,7 @@ public class CloudFormationStackSet {
 				throw new IllegalStateException("Stack set reached status=" + result.stackSet().statusAsString()
 						+ " while waiting for " + expectedStatus + "; it will not reach the expected status");
 			}
-			sleepBetweenPolls(pollInterval);
+			this.sleepBetweenPolls(pollInterval);
 		}
 	}
 
@@ -151,7 +161,7 @@ public class CloudFormationStackSet {
 			if (result != null) {
 				return result;
 			}
-			sleepBetweenPolls(pollInterval);
+			this.sleepBetweenPolls(pollInterval);
 		}
 	}
 
