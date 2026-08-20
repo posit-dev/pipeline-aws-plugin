@@ -599,9 +599,8 @@ value if you use it:
 
 ## cfnDeleteStackSet
 
-Deletes a stack set.
-
-To prevent running into rate limiting on the AWS API you can change the default polling interval of 1000 ms using the parameter `pollIntervall`. Using the value `0` disables event printing.
+Deletes a stack set. The step submits the deletion and returns; it does not wait for AWS to finish,
+so the `pollInterval` parameter it accepts has no effect.
 
 ```groovy
   cfnDeleteStackSet(stackSet:'myStackSet')
@@ -1171,9 +1170,10 @@ ebWaitOnEnvironmentHealth(
   poll once a second rather than continuously. That value is documented as disabling event printing,
   which it still does; previously it also reached the waiter's backoff, and with no attempt cap that
   meant calling `DescribeStacks` in a tight loop for the whole timeout. Every positive interval,
-  including sub-second ones, is still passed through exactly. The stack-set steps
-  (`cfnUpdateStackSet`, `cfnDeleteStackSet`) poll through their own loop rather than an SDK waiter
-  and are unchanged, so `pollInterval: 0` there still means no delay between calls.
+  including sub-second ones, is still passed through exactly. `cfnUpdateStackSet` polls through its
+  own loop rather than an SDK waiter and is unchanged, so `pollInterval: 0` there still means no
+  delay between calls; `cfnDeleteStackSet` accepts `pollInterval` but never waits, so the parameter
+  has no effect at all.
 * **Breaking**: `cfnUpdateStackSet` (including its `create: true` path) now returns a map instead of
   the AWS `DescribeStackSet` response object - for example `result.stackSet.stackSetId`. The v2 response
   types are not `Serializable`, so holding the old value across a step boundary
