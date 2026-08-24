@@ -28,6 +28,7 @@ import software.amazon.awssdk.transfer.s3.model.DownloadDirectoryRequest;
 import software.amazon.awssdk.transfer.s3.model.DownloadFileRequest;
 import software.amazon.awssdk.transfer.s3.model.FailedFileDownload;
 import com.google.common.base.Preconditions;
+import de.taimos.pipeline.aws.utils.S3Utils;
 import de.taimos.pipeline.aws.utils.StepUtils;
 import hudson.EnvVars;
 import hudson.Extension;
@@ -186,10 +187,10 @@ public class S3DownloadStep extends AbstractS3Step {
 		}
 
 		private void downloadFile(S3TransferManager mgr, File localFile) {
-			mgr.downloadFile(DownloadFileRequest.builder()
+			S3Utils.joinTransfer(mgr.downloadFile(DownloadFileRequest.builder()
 					.getObjectRequest(get -> get.bucket(this.bucket).key(this.path))
 					.destination(localFile)
-					.build()).completionFuture().join();
+					.build()).completionFuture());
 			this.taskListener.getLogger().println("Finished: download of s3://" + this.bucket + "/" + this.path);
 		}
 
@@ -201,11 +202,11 @@ public class S3DownloadStep extends AbstractS3Step {
 		 */
 		private void downloadDirectory(S3TransferManager mgr, File localFile) {
 			String prefix = this.path == null ? "" : this.path;
-			CompletedDirectoryDownload completed = mgr.downloadDirectory(DownloadDirectoryRequest.builder()
+			CompletedDirectoryDownload completed = S3Utils.joinTransfer(mgr.downloadDirectory(DownloadDirectoryRequest.builder()
 					.bucket(this.bucket)
 					.destination(localFile.toPath())
 					.listObjectsV2RequestTransformer(list -> list.prefix(prefix))
-					.build()).completionFuture().join();
+					.build()).completionFuture());
 
 			if (!completed.failedTransfers().isEmpty()) {
 				for (FailedFileDownload failure : completed.failedTransfers()) {

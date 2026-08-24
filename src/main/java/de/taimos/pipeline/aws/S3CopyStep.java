@@ -29,6 +29,7 @@ import software.amazon.awssdk.services.s3.model.ServerSideEncryption;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 import software.amazon.awssdk.transfer.s3.model.CopyRequest;
 import com.google.common.base.Preconditions;
+import de.taimos.pipeline.aws.utils.S3Utils;
 import de.taimos.pipeline.aws.utils.StepUtils;
 import hudson.EnvVars;
 import hudson.Extension;
@@ -264,8 +265,8 @@ public class S3CopyStep extends AbstractS3Step {
 			S3AsyncClient s3client = AWSClientFactory.create(s3ClientOptions.createS3AsyncClientBuilder(), this.getContext(), envVars);
 			// The transfer manager owns the client it is built with, so closing it closes both.
 			try (S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3client)) {
-				mgr.copy(CopyRequest.builder().copyObjectRequest(request.build()).build())
-						.completionFuture().join();
+				S3Utils.joinTransfer(mgr.copy(CopyRequest.builder()
+						.copyObjectRequest(request.build()).build()).completionFuture());
 			}
 
 			listener.getLogger().println("Copy complete");

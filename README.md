@@ -1193,6 +1193,17 @@ ebWaitOnEnvironmentHealth(
   front with a message naming the parameter.
 * `s3PresignURL` now honours `pathStyleAccessEnabled`, which reaches the presigner alongside the
   other S3 options.
+* `s3Upload` now uses the AWS SDK v2 transfer manager, and fails the build if any file in a
+  directory or pattern upload could not be uploaded - SDK v1 threw in that case, while v2 reports
+  per-file failures on an otherwise successful transfer.
+* Fixed: `s3Upload` with `includePathPattern` and `kmsId` sent the KMS key id as the server-side
+  encryption *algorithm*. The single-file path set it correctly, so the two disagreed; both now go
+  through one translation.
+* **Breaking**: a pipeline that wraps an agent-side `s3Upload` or `s3Download` in
+  `try`/`catch (com.amazonaws...AmazonS3Exception)` can no longer catch the AWS exception by type.
+  The v1 exception crossed the remoting channel intact; the v2 one does not, and arrives as
+  `hudson.remoting.ProxyException`. The AWS error message is preserved, so catching `Exception` and
+  inspecting the message still works.
 * `s3Download` of a directory (a `path` ending in `/`, or no `path`) now fails the build if any
   individual object could not be downloaded, listing each failure. SDK v1 threw in that case; SDK v2
   reports per-file failures on an otherwise successful transfer, so without an explicit check a
