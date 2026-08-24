@@ -150,13 +150,23 @@ public abstract class AbstractS3Step extends Step {
 		 *
 		 * Named per operation rather than taking the numbers as parameters: the upload and copy figures
 		 * differ by three orders of magnitude, and a call site passing the wrong one would be a
-		 * single-token slip with no visible symptom.
+		 * single-token slip with no visible symptom. There is deliberately no unqualified overload -
+		 * one would become the default a new call site reaches for, which reintroduces the same slip by
+		 * omission.
+		 *
+		 * s3Download shares the upload figures: v1 had no separate download configuration, and a
+		 * download's part size is a transfer-chunking detail rather than something S3 records on the
+		 * object, so there is nothing to keep parity with.
 		 */
 		public S3AsyncClientBuilder createS3AsyncClientBuilderForCopy() {
 			return this.createS3AsyncClientBuilder(copyMultipartConfiguration());
 		}
 
-		public S3AsyncClientBuilder createS3AsyncClientBuilder() {
+		public S3AsyncClientBuilder createS3AsyncClientBuilderForUpload() {
+			return this.createS3AsyncClientBuilder(uploadMultipartConfiguration());
+		}
+
+		public S3AsyncClientBuilder createS3AsyncClientBuilderForDownload() {
 			return this.createS3AsyncClientBuilder(uploadMultipartConfiguration());
 		}
 

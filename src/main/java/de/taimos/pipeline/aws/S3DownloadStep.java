@@ -177,7 +177,7 @@ public class S3DownloadStep extends AbstractS3Step {
 			// S3TransferManager only closes an async client it created itself, so a client passed to it
 			// has to be closed here - on an agent that runs many builds, leaking a netty event loop per
 			// download adds up.
-			try (S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilder(), this.envVars);
+			try (S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilderForDownload(), this.envVars);
 					S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
 				if (this.path == null || this.path.isEmpty() || this.path.endsWith("/")) {
 					this.downloadDirectory(mgr, localFile);

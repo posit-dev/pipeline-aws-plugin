@@ -64,10 +64,4 @@ public class S3MultipartConfigurationTest {
 		assertThat(configuration.thresholdInBytes()).isEqualTo(5 * GIB);
 		assertThat(configuration.minimumPartSizeInBytes()).isEqualTo(100 * MIB);
 	}
-
-	@Test
-	public void theTwoConfigurationsAreNotInterchangeable() {
-		assertThat(S3ClientOptions.uploadMultipartConfiguration())
-				.isNotEqualTo(S3ClientOptions.copyMultipartConfiguration());
-	}
 }

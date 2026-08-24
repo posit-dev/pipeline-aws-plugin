@@ -181,5 +181,4 @@ public class S3CopyStepTests {
 		Mockito.verify(this.transferManager).close();
 		Mockito.verify(this.asyncClient).close();
 	}
-
 }

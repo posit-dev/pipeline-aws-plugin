@@ -386,7 +386,7 @@ public class S3UploadStep extends AbstractS3Step {
 
 				// S3TransferManager only closes an async client it created itself, so a client passed to
 				// it has to be closed here or its netty event loop outlives the step.
-				try (S3AsyncClient s3Client = AWSClientFactory.create(amazonS3ClientOptions.createS3AsyncClientBuilder(), Execution.this.getContext(), envVars);
+				try (S3AsyncClient s3Client = AWSClientFactory.create(amazonS3ClientOptions.createS3AsyncClientBuilderForUpload(), Execution.this.getContext(), envVars);
 						S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
 					S3Utils.joinTransfer(mgr.upload(UploadRequest.builder()
 							.putObjectRequest(request)
@@ -461,7 +461,7 @@ public class S3UploadStep extends AbstractS3Step {
 		public Void invoke(File localFile, VirtualChannel channel) throws IOException, InterruptedException {
 			// S3TransferManager only closes an async client it created itself, so a client passed to it
 			// has to be closed here - these run on agents, which stay up across many builds.
-			try (S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilder(), this.envVars);
+			try (S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilderForUpload(), this.envVars);
 					S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
 				if (localFile.isFile()) {
 					String key = this.path;
@@ -609,7 +609,7 @@ public class S3UploadStep extends AbstractS3Step {
 
 		@Override
 		public Void invoke(File localFile, VirtualChannel channel) throws IOException, InterruptedException {
-			try (S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilder(), this.envVars);
+			try (S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilderForUpload(), this.envVars);
 					S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
 				uploadFileList(mgr, this.bucket, this.path, localFile, this.fileList, this.options, this.taskListener);
 			}
