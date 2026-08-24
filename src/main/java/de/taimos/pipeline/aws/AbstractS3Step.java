@@ -34,6 +34,7 @@ import software.amazon.awssdk.services.s3.S3BaseClientBuilder;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.multipart.MultipartConfiguration;
 
 public abstract class AbstractS3Step extends Step {
 
@@ -104,37 +105,65 @@ public abstract class AbstractS3Step extends Step {
 			return this.applyTo(S3Client.builder());
 		}
 
-		/**
-		 * v1's TransferManagerConfiguration defaults, read off the v1 jar rather than assumed: an
-		 * upload became multipart above 16 MiB, a copy above 5 GiB, with a 5 MiB minimum part.
+		/*
+		 * v1's TransferManagerConfiguration defaults, read off the v1 jar rather than assumed. Both the
+		 * threshold and the part size differed between uploads and copies - copy parts are transferred
+		 * server-side, so v1 used a much coarser size for them - and v2 carries one MultipartConfiguration
+		 * per client, so the two operations need separately configured clients rather than one shared
+		 * setting.
 		 *
-		 * These matter beyond large-object support. A multipart object's ETag is a hash of part hashes
-		 * with a -N suffix rather than the content MD5, so a pipeline comparing an ETag against a
-		 * locally computed digest sees a different answer once an object crosses the threshold.
-		 * Leaving the SDK's 8 MiB default in place would have moved that boundary for both operations.
+		 * The thresholds matter beyond large-object support: a multipart object's ETag is a hash of part
+		 * hashes with a -N suffix rather than the content MD5, so a pipeline comparing an ETag against a
+		 * locally computed digest sees a different answer once an object crosses the threshold. The SDK's
+		 * own default of 8 MiB for everything would have moved that boundary for both operations.
+		 *
+		 * The part size matters for request count: v2 sizes copy parts as
+		 * max(minimumPartSizeInBytes, ceil(length / 10000)), so the 5 MiB upload figure applied to a copy
+		 * would split a 5 GiB object into roughly 1024 UploadPartCopy calls where v1 issued about 52.
 		 */
-		public static final long MULTIPART_UPLOAD_THRESHOLD_BYTES = 16L * 1024 * 1024;
-		public static final long MULTIPART_COPY_THRESHOLD_BYTES = 5L * 1024 * 1024 * 1024;
-		private static final long MINIMUM_PART_SIZE_BYTES = 5L * 1024 * 1024;
+		private static final long MULTIPART_UPLOAD_THRESHOLD_BYTES = 16L * 1024 * 1024;
+		private static final long MULTIPART_UPLOAD_PART_SIZE_BYTES = 5L * 1024 * 1024;
+		private static final long MULTIPART_COPY_THRESHOLD_BYTES = 5L * 1024 * 1024 * 1024;
+		private static final long MULTIPART_COPY_PART_SIZE_BYTES = 100L * 1024 * 1024;
+
+		static MultipartConfiguration uploadMultipartConfiguration() {
+			return multipartConfiguration(MULTIPART_UPLOAD_THRESHOLD_BYTES, MULTIPART_UPLOAD_PART_SIZE_BYTES);
+		}
+
+		static MultipartConfiguration copyMultipartConfiguration() {
+			return multipartConfiguration(MULTIPART_COPY_THRESHOLD_BYTES, MULTIPART_COPY_PART_SIZE_BYTES);
+		}
+
+		private static MultipartConfiguration multipartConfiguration(long thresholdBytes, long partSizeBytes) {
+			return MultipartConfiguration.builder()
+					.thresholdInBytes(thresholdBytes)
+					.minimumPartSizeInBytes(partSizeBytes)
+					.build();
+		}
 
 		/**
 		 * Only for S3TransferManager, which has no synchronous form.
 		 *
 		 * multipartEnabled is not the SDK default, and without it the transfer manager issues a single
-		 * PutObject or CopyObject - which S3 rejects above 5 GiB, so objects that worked under v1
-		 * would start failing. The threshold is per client, and v1's differed between uploads and
-		 * copies, so each step passes its own.
+		 * PutObject or CopyObject - which S3 rejects above 5 GiB, so objects that worked under v1 would
+		 * start failing.
+		 *
+		 * Named per operation rather than taking the numbers as parameters: the upload and copy figures
+		 * differ by three orders of magnitude, and a call site passing the wrong one would be a
+		 * single-token slip with no visible symptom.
 		 */
-		public S3AsyncClientBuilder createS3AsyncClientBuilder(long multipartThresholdBytes) {
-			return this.applyTo(S3AsyncClient.builder())
-					.multipartEnabled(true)
-					.multipartConfiguration(c -> c
-							.thresholdInBytes(multipartThresholdBytes)
-							.minimumPartSizeInBytes(MINIMUM_PART_SIZE_BYTES));
+		public S3AsyncClientBuilder createS3AsyncClientBuilderForCopy() {
+			return this.createS3AsyncClientBuilder(copyMultipartConfiguration());
 		}
 
 		public S3AsyncClientBuilder createS3AsyncClientBuilder() {
-			return this.createS3AsyncClientBuilder(MULTIPART_UPLOAD_THRESHOLD_BYTES);
+			return this.createS3AsyncClientBuilder(uploadMultipartConfiguration());
+		}
+
+		private S3AsyncClientBuilder createS3AsyncClientBuilder(MultipartConfiguration multipartConfiguration) {
+			return this.applyTo(S3AsyncClient.builder())
+					.multipartEnabled(true)
+					.multipartConfiguration(multipartConfiguration);
 		}
 
 		/**

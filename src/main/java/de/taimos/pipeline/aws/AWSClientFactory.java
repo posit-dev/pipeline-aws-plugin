@@ -366,11 +366,19 @@ public class AWSClientFactory implements Serializable {
 	 * only one would quietly halve what the setting covers.
 	 */
 	static software.amazon.awssdk.http.async.SdkAsyncHttpClient.Builder<?> getV2AsyncHttpClientBuilder(EnvVars vars) {
-		Duration socketTimeout = getV2SocketTimeout(vars);
-		return NettyNioAsyncHttpClient.builder()
-				.readTimeout(socketTimeout)
-				.writeTimeout(socketTimeout)
+		return applyAsyncTimeouts(NettyNioAsyncHttpClient.builder(), vars)
 				.proxyConfiguration(ProxyConfiguration.buildV2NettyProxyConfiguration(vars));
+	}
+
+	/**
+	 * Separated out because netty's builder exposes no getters: without a seam there is no way to
+	 * assert that both directions are set, and asserting only that a builder was returned pins nothing.
+	 */
+	static NettyNioAsyncHttpClient.Builder applyAsyncTimeouts(NettyNioAsyncHttpClient.Builder builder, EnvVars vars) {
+		Duration socketTimeout = getV2SocketTimeout(vars);
+		return builder
+				.readTimeout(socketTimeout)
+				.writeTimeout(socketTimeout);
 	}
 
 	static software.amazon.awssdk.http.SdkHttpClient getV2SyncHttpClient(EnvVars vars) {

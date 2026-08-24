@@ -35,6 +35,7 @@ import software.amazon.awssdk.awscore.retry.AwsRetryStrategy;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
 import software.amazon.awssdk.http.async.SdkAsyncHttpClient;
+import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient;
 import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.sts.StsClient;
@@ -276,14 +277,20 @@ public class AWSClientFactoryV2Test {
 		Mockito.verify(builder, Mockito.never()).httpClient(Mockito.any(SdkAsyncHttpClient.class));
 	}
 
+	/**
+	 * v1 had a single socket timeout covering both directions; netty splits them, so applying it to
+	 * only one would quietly halve what AWS_SDK_SOCKET_TIMEOUT covers.
+	 */
 	@Test
 	public void asyncSocketTimeoutCoversBothDirections() {
 		EnvVars vars = new EnvVars();
 		vars.put(AWSClientFactory.AWS_SDK_SOCKET_TIMEOUT, "1234");
+		NettyNioAsyncHttpClient.Builder builder = Mockito.mock(NettyNioAsyncHttpClient.Builder.class, Mockito.RETURNS_SELF);
 
-		// v1 had one socket timeout for both directions and netty splits them, so both must be set
-		assertThat(AWSClientFactory.getV2AsyncHttpClientBuilder(vars)).isNotNull();
-		assertThat(AWSClientFactory.getV2SocketTimeout(vars)).isEqualTo(Duration.ofMillis(1234));
+		AWSClientFactory.applyAsyncTimeouts(builder, vars);
+
+		Mockito.verify(builder).readTimeout(Duration.ofMillis(1234));
+		Mockito.verify(builder).writeTimeout(Duration.ofMillis(1234));
 	}
 
 	@Test

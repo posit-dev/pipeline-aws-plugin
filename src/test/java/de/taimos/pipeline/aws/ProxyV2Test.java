@@ -27,7 +27,6 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.After;
 import org.junit.Before;
-import org.assertj.core.api.Assertions;
 import org.junit.Test;
 import software.amazon.awssdk.http.apache.ProxyConfiguration;
 
@@ -268,8 +267,8 @@ public class ProxyV2Test {
 		software.amazon.awssdk.http.nio.netty.ProxyConfiguration netty =
 				de.taimos.pipeline.aws.ProxyConfiguration.buildV2NettyProxyConfiguration(new EnvVars());
 
-		Assertions.assertThat(netty.host()).isEqualTo("proxy.example.com");
-		Assertions.assertThat(netty.port()).isEqualTo(80);
+		assertThat(netty.host()).isEqualTo("proxy.example.com");
+		assertThat(netty.port()).isEqualTo(80);
 	}
 
 	@Test
@@ -280,6 +279,6 @@ public class ProxyV2Test {
 		software.amazon.awssdk.http.nio.netty.ProxyConfiguration netty =
 				de.taimos.pipeline.aws.ProxyConfiguration.buildV2NettyProxyConfiguration(new EnvVars());
 
-		Assertions.assertThat(netty.port()).isEqualTo(8443);
+		assertThat(netty.port()).isEqualTo(8443);
 	}
 }

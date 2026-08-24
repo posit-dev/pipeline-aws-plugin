@@ -159,8 +159,9 @@ public class S3DownloadStepTests {
 	}
 
 	/**
-	 * The client is closed on the agent side too - a leaked netty event loop per download adds up on
-	 * an agent that stays up across many builds.
+	 * The callable closes the client it built - still in process here, see the class javadoc on agent
+	 * coverage. It matters most on an agent, where a leaked netty event loop per download accumulates
+	 * across builds.
 	 */
 	@Test
 	public void closesBothTheTransferManagerAndTheClientItWasGiven() throws Exception {
