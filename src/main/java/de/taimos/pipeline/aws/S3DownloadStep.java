@@ -44,6 +44,7 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.io.IOException;
 import java.util.Set;
 
@@ -109,6 +110,26 @@ public class S3DownloadStep extends AbstractS3Step {
 		public String getDisplayName() {
 			return "Copy file from S3";
 		}
+	}
+
+	/**
+	 * v1 recreated each object's whole key under the destination directory, so downloading the
+	 * prefix a/b/ into out produced out/a/b/x.txt. v2 resolves keys relative to the listing prefix
+	 * instead, which would put the same object at out/x.txt - and silently: the download succeeds,
+	 * and only a later step reading the file by its full key path notices. Pushing the prefix into
+	 * the destination restores v1's layout, because v2 then strips it back off each key.
+	 *
+	 * Resolved segment by segment rather than by handing "a/b" to resolve, because this runs on the
+	 * agent and an agent may be Windows.
+	 */
+	static Path destinationFor(File localFile, String prefix) {
+		Path destination = localFile.toPath();
+		for (String segment : prefix.split("/")) {
+			if (!segment.isEmpty()) {
+				destination = destination.resolve(segment);
+			}
+		}
+		return destination;
 	}
 
 	public static class Execution extends SynchronousNonBlockingStepExecution<Void> {
@@ -206,7 +227,7 @@ public class S3DownloadStep extends AbstractS3Step {
 			String prefix = this.path == null ? "" : this.path;
 			CompletedDirectoryDownload completed = S3Utils.joinTransfer(mgr.downloadDirectory(DownloadDirectoryRequest.builder()
 					.bucket(this.bucket)
-					.destination(localFile.toPath())
+					.destination(S3DownloadStep.destinationFor(localFile, prefix))
 					.listObjectsV2RequestTransformer(list -> list.prefix(prefix))
 					.build()).completionFuture());
 

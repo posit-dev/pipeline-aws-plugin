@@ -1204,6 +1204,11 @@ ebWaitOnEnvironmentHealth(
   The v1 exception crossed the remoting channel intact; the v2 one does not, and arrives as
   `hudson.remoting.ProxyException`. The AWS error message is preserved, so catching `Exception` and
   inspecting the message still works.
+* `s3Download` of a directory keeps putting files where SDK v1 put them. SDK v2 resolves object keys
+  relative to the listing prefix, so `s3Download(bucket: 'b', path: 'a/b/', file: 'out')` would have
+  written `out/x.txt` where v1 wrote `out/a/b/x.txt` - a silent change, since the download itself
+  succeeds and only a later step reading the file by its full key path fails. The prefix is folded
+  into the destination so the v1 layout is preserved.
 * `s3Download` of a directory (a `path` ending in `/`, or no `path`) now fails the build if any
   individual object could not be downloaded, listing each failure. SDK v1 threw in that case; SDK v2
   reports per-file failures on an otherwise successful transfer, so without an explicit check a
