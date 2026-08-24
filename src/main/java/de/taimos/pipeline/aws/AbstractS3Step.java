@@ -105,15 +105,36 @@ public abstract class AbstractS3Step extends Step {
 		}
 
 		/**
+		 * v1's TransferManagerConfiguration defaults, read off the v1 jar rather than assumed: an
+		 * upload became multipart above 16 MiB, a copy above 5 GiB, with a 5 MiB minimum part.
+		 *
+		 * These matter beyond large-object support. A multipart object's ETag is a hash of part hashes
+		 * with a -N suffix rather than the content MD5, so a pipeline comparing an ETag against a
+		 * locally computed digest sees a different answer once an object crosses the threshold.
+		 * Leaving the SDK's 8 MiB default in place would have moved that boundary for both operations.
+		 */
+		public static final long MULTIPART_UPLOAD_THRESHOLD_BYTES = 16L * 1024 * 1024;
+		public static final long MULTIPART_COPY_THRESHOLD_BYTES = 5L * 1024 * 1024 * 1024;
+		private static final long MINIMUM_PART_SIZE_BYTES = 5L * 1024 * 1024;
+
+		/**
 		 * Only for S3TransferManager, which has no synchronous form.
 		 *
 		 * multipartEnabled is not the SDK default, and without it the transfer manager issues a single
-		 * PutObject or CopyObject. v1's TransferManager switched to a multipart transfer above 5 GB by
-		 * itself, so leaving this off would mean s3Upload and s3Copy start failing on large objects
-		 * that used to work - S3 rejects a single-part copy or put over the limit.
+		 * PutObject or CopyObject - which S3 rejects above 5 GiB, so objects that worked under v1
+		 * would start failing. The threshold is per client, and v1's differed between uploads and
+		 * copies, so each step passes its own.
 		 */
+		public S3AsyncClientBuilder createS3AsyncClientBuilder(long multipartThresholdBytes) {
+			return this.applyTo(S3AsyncClient.builder())
+					.multipartEnabled(true)
+					.multipartConfiguration(c -> c
+							.thresholdInBytes(multipartThresholdBytes)
+							.minimumPartSizeInBytes(MINIMUM_PART_SIZE_BYTES));
+		}
+
 		public S3AsyncClientBuilder createS3AsyncClientBuilder() {
-			return this.applyTo(S3AsyncClient.builder()).multipartEnabled(true);
+			return this.createS3AsyncClientBuilder(MULTIPART_UPLOAD_THRESHOLD_BYTES);
 		}
 
 		/**

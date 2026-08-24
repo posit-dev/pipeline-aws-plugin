@@ -33,6 +33,7 @@ import org.junit.rules.Timeout;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
 import software.amazon.awssdk.services.s3.model.CopyObjectResponse;
 import software.amazon.awssdk.services.s3.model.MetadataDirective;
@@ -59,6 +60,7 @@ public class S3CopyStepTests {
 	public Timeout timeout = Timeout.seconds(120);
 
 	private S3TransferManager transferManager;
+	private S3AsyncClient asyncClient;
 
 	@Before
 	public void setupSdk() {
@@ -69,7 +71,8 @@ public class S3CopyStepTests {
 		Mockito.when(this.transferManager.copy(Mockito.any(CopyRequest.class))).thenReturn(copy);
 		AWSUtilFactory.setV2TransferManagerSupplier(() -> this.transferManager);
 		// the step still builds an async client before handing it to the manager
-		AWSClientFactory.setV2FactoryDelegate((x) -> Mockito.mock(software.amazon.awssdk.services.s3.S3AsyncClient.class));
+		this.asyncClient = Mockito.mock(S3AsyncClient.class);
+		AWSClientFactory.setV2FactoryDelegate((x) -> this.asyncClient);
 	}
 
 	@After
@@ -164,5 +167,18 @@ public class S3CopyStepTests {
 				"fromBucket: 'src', fromPath: 'a', toBucket: 'dst', toPath: 'c', sseAlgorithm: 'AES256'");
 
 		Assertions.assertThat(request.serverSideEncryption()).isEqualTo(ServerSideEncryption.AES256);
+	}
+
+	/**
+	 * S3TransferManager closes only a client it created itself, so a client handed to it has to be
+	 * closed by the caller - otherwise every copy leaks the client and its netty event loop. Nothing
+	 * asserted this while the leak was present across three commits.
+	 */
+	@Test
+	public void closesBothTheTransferManagerAndTheClientItWasGiven() throws Exception {
+		this.runAndCapture("s3CopyClose", "fromBucket: 'src', fromPath: 'a', toBucket: 'dst', toPath: 'c'");
+
+		Mockito.verify(this.transferManager).close();
+		Mockito.verify(this.asyncClient).close();
 	}
 }

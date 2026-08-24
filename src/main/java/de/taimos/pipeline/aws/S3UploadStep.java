@@ -61,7 +61,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 public class S3UploadStep extends AbstractS3Step {
@@ -548,8 +548,11 @@ public class S3UploadStep extends AbstractS3Step {
 		List<String> failures = new ArrayList<>();
 		for (Map.Entry<String, CompletableFuture<CompletedFileUpload>> upload : uploads.entrySet()) {
 			try {
-				upload.getValue().join();
-			} catch (CompletionException e) {
+				// get() rather than join(): this is the path with the most transfers in flight, and
+				// join() would swallow an abort's interrupt and keep uploading against a workspace
+				// Jenkins believes is free.
+				upload.getValue().get();
+			} catch (ExecutionException e) {
 				taskListener.getLogger().println("Failed: " + upload.getKey() + " - " + e.getCause());
 				failures.add(upload.getKey());
 			}

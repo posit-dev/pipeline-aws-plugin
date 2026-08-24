@@ -1213,8 +1213,12 @@ ebWaitOnEnvironmentHealth(
 * Fixed: `s3Upload` of a directory sent every file with no bucket and no key, so the upload failed
   for all of them. Fixed before release; it never shipped.
 * Fixed: `s3Upload` of a directory with a `path` ending in `/` named every object `prefix//name`.
-* `s3Copy` and `s3Upload` again use a multipart transfer for large objects. SDK v2's asynchronous
-  client does not do this by default, where v1's transfer manager switched automatically above 5 GB.
+* `s3Copy` and `s3Upload` again use a multipart transfer for large objects, at v1's thresholds:
+  16 MiB for an upload and 5 GiB for a copy. SDK v2's asynchronous client does no multipart transfer
+  at all unless asked, and its own default threshold is 8 MiB for both - which would have moved the
+  point at which an object gets a multipart ETag (a hash of part hashes with a `-N` suffix rather
+  than the content MD5), so a pipeline comparing an ETag against a locally computed digest would see
+  a different answer for objects between 8 and 16 MiB.
 * **Breaking**: `acl: 'LogDeliveryWrite'` is no longer accepted by `s3Copy` or `s3Upload`. It is a
   bucket ACL, and SDK v2 models object and bucket canned ACLs separately, so it has no object-level
   counterpart. S3 rejected it on an object under v1 too - what changes is that the build now fails

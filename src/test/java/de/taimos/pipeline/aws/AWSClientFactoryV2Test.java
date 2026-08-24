@@ -34,6 +34,8 @@ import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.awscore.retry.AwsRetryStrategy;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
+import software.amazon.awssdk.http.async.SdkAsyncHttpClient;
+import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.retries.api.RetryStrategy;
@@ -252,6 +254,36 @@ public class AWSClientFactoryV2Test {
 	public void checksumsKeepTheSdkDefaultWithNoEndpointOverride() {
 		Mockito.verify(configureS3Builder(null), Mockito.never())
 				.requestChecksumCalculation(Mockito.any(RequestChecksumCalculation.class));
+	}
+
+	/**
+	 * httpClient(instance) leaves ownership with the caller and the SDK never closes it, which for
+	 * netty means leaking an EventLoopGroup per invocation. Only httpClientBuilder hands ownership
+	 * over, so closing the SDK client shuts the event loop down with it - and nothing pinned that
+	 * while three successive commits shipped the leaking form.
+	 */
+	@Test
+	public void asyncBuildersGetAnHttpClientBuilderRatherThanAnInstance() {
+		EnvVars vars = new EnvVars();
+		vars.put(AWSClientFactory.AWS_REGION, "us-west-2");
+		vars.put(AWSClientFactory.AWS_ACCESS_KEY_ID, "AKIAEXAMPLE");
+		vars.put(AWSClientFactory.AWS_SECRET_ACCESS_KEY, "secret");
+		S3AsyncClientBuilder builder = Mockito.mock(S3AsyncClientBuilder.class, Mockito.RETURNS_SELF);
+
+		AWSClientFactory.configureV2Builder(builder, null, vars);
+
+		Mockito.verify(builder).httpClientBuilder(Mockito.any(SdkAsyncHttpClient.Builder.class));
+		Mockito.verify(builder, Mockito.never()).httpClient(Mockito.any(SdkAsyncHttpClient.class));
+	}
+
+	@Test
+	public void asyncSocketTimeoutCoversBothDirections() {
+		EnvVars vars = new EnvVars();
+		vars.put(AWSClientFactory.AWS_SDK_SOCKET_TIMEOUT, "1234");
+
+		// v1 had one socket timeout for both directions and netty splits them, so both must be set
+		assertThat(AWSClientFactory.getV2AsyncHttpClientBuilder(vars)).isNotNull();
+		assertThat(AWSClientFactory.getV2SocketTimeout(vars)).isEqualTo(Duration.ofMillis(1234));
 	}
 
 	@Test

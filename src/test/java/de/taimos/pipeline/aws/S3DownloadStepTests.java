@@ -63,12 +63,14 @@ public class S3DownloadStepTests {
 	public Timeout timeout = Timeout.seconds(120);
 
 	private S3TransferManager transferManager;
+	private S3AsyncClient asyncClient;
 
 	@Before
 	public void setupSdk() {
 		this.transferManager = Mockito.mock(S3TransferManager.class);
 		AWSUtilFactory.setV2TransferManagerSupplier(() -> this.transferManager);
-		AWSClientFactory.setV2FactoryDelegate((x) -> Mockito.mock(S3AsyncClient.class));
+		this.asyncClient = Mockito.mock(S3AsyncClient.class);
+		AWSClientFactory.setV2FactoryDelegate((x) -> this.asyncClient);
 	}
 
 	@After
@@ -154,5 +156,19 @@ public class S3DownloadStepTests {
 		Run run = this.run("s3DownloadPartial", "bucket: 'my-bucket', path: 'a/b/', file: 'out'", Result.FAILURE);
 
 		this.jenkinsRule.assertLogContains("failed for 1 object(s)", run);
+	}
+
+	/**
+	 * The client is closed on the agent side too - a leaked netty event loop per download adds up on
+	 * an agent that stays up across many builds.
+	 */
+	@Test
+	public void closesBothTheTransferManagerAndTheClientItWasGiven() throws Exception {
+		this.stubFileDownload();
+
+		this.run("s3DownloadClose", "bucket: 'my-bucket', path: 'a/b.txt', file: 'out.txt'", Result.SUCCESS);
+
+		Mockito.verify(this.transferManager).close();
+		Mockito.verify(this.asyncClient).close();
 	}
 }

@@ -57,6 +57,7 @@ import static org.hamcrest.Matchers.not;
 public class S3UploadStepTransferManagerIntegrationTest {
 
 	private S3TransferManager transferManager;
+	private S3AsyncClient asyncClient;
 
 	@ClassRule
 	public static BuildWatcher buildWatcher = new BuildWatcher();
@@ -67,7 +68,8 @@ public class S3UploadStepTransferManagerIntegrationTest {
 	@Before
 	public void setupSdk() throws Exception {
 		transferManager = Mockito.mock(S3TransferManager.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> Mockito.mock(S3AsyncClient.class));
+		asyncClient = Mockito.mock(S3AsyncClient.class);
+		AWSClientFactory.setV2FactoryDelegate((x) -> asyncClient);
 		AWSUtilFactory.setV2TransferManagerSupplier(() -> transferManager);
 	}
 
@@ -101,6 +103,8 @@ public class S3UploadStepTransferManagerIntegrationTest {
 		Mockito.verify(transferManager).uploadFile(captor.capture());
 		Mockito.verify(transferManager).close();
 		Mockito.verifyNoMoreInteractions(transferManager);
+		// the manager does not close a client it was handed, so the step must
+		Mockito.verify(asyncClient).close();
 
 		Assert.assertEquals("test-bucket", captor.getValue().putObjectRequest().bucket());
 		Assert.assertEquals("subdir/test.txt", captor.getValue().putObjectRequest().key());

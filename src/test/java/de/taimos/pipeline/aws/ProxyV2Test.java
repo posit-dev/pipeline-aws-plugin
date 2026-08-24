@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.After;
 import org.junit.Before;
+import org.assertj.core.api.Assertions;
 import org.junit.Test;
 import software.amazon.awssdk.http.apache.ProxyConfiguration;
 
@@ -252,5 +253,33 @@ public class ProxyV2Test {
 		assertThat(config.host()).isEqualTo("proxy.corp");
 		assertThat(config.port()).isEqualTo(8080);
 		assertThat(config.scheme()).isEqualTo("http");
+	}
+
+	/**
+	 * The netty assembly is asserted in prose to yield "the same one the synchronous clients get", and
+	 * the one place it silently did not was this: apache leaves an unset port at -1 and resolves it
+	 * against the scheme, while netty's port simply defaults to 0, so an async transfer would have
+	 * dialled proxy:0 while the sync clients worked. Deleting the mapping leaves the apache cases green.
+	 */
+	@Test
+	public void nettyGivesAnUnsetPortTheSameDefaultApacheResolvesTo() {
+		System.setProperty("https.proxyHost", "proxy.example.com");
+
+		software.amazon.awssdk.http.nio.netty.ProxyConfiguration netty =
+				de.taimos.pipeline.aws.ProxyConfiguration.buildV2NettyProxyConfiguration(new EnvVars());
+
+		Assertions.assertThat(netty.host()).isEqualTo("proxy.example.com");
+		Assertions.assertThat(netty.port()).isEqualTo(80);
+	}
+
+	@Test
+	public void nettyCarriesAnExplicitPortThrough() {
+		System.setProperty("https.proxyHost", "proxy.example.com");
+		System.setProperty("https.proxyPort", "8443");
+
+		software.amazon.awssdk.http.nio.netty.ProxyConfiguration netty =
+				de.taimos.pipeline.aws.ProxyConfiguration.buildV2NettyProxyConfiguration(new EnvVars());
+
+		Assertions.assertThat(netty.port()).isEqualTo(8443);
 	}
 }
