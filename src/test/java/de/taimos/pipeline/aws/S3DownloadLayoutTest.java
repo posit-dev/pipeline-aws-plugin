@@ -38,13 +38,13 @@ import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Publisher;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 import software.amazon.awssdk.transfer.s3.model.CompletedDirectoryDownload;
-import software.amazon.awssdk.transfer.s3.model.DownloadDirectoryRequest;
 
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -97,15 +97,11 @@ public class S3DownloadLayoutTest {
 	private CompletedDirectoryDownload download(String prefix, List<String> keys, File destination) {
 		try (S3AsyncClient client = stubClientReturning(keys);
 				S3TransferManager mgr = S3TransferManager.builder().s3Client(client).build()) {
-			// the same destination computation the step uses, so this pins the combination that
-			// actually determines layout: our prefix resolution plus the SDK's prefix stripping
-			DownloadDirectoryRequest.Builder request = DownloadDirectoryRequest.builder()
-					.bucket("my-bucket")
-					.destination(S3DownloadStep.destinationFor(destination, prefix));
-			if (!prefix.isEmpty()) {
-				request.listObjectsV2RequestTransformer(l -> l.prefix(prefix));
-			}
-			return mgr.downloadDirectory(request.build()).completionFuture().join();
+			// exactly the request the step issues - layout depends on the destination and the listing
+			// prefix together, so a request rebuilt here could stop matching without anyone noticing
+			return mgr.downloadDirectory(
+					S3DownloadStep.downloadDirectoryRequest("my-bucket", destination, prefix))
+					.completionFuture().join();
 		}
 	}
 
@@ -138,5 +134,22 @@ public class S3DownloadLayoutTest {
 		assertThat(completed.failedTransfers()).isEmpty();
 		assertThat(new File(destination, "top.txt")).exists();
 		assertThat(new File(destination, "sub/deeper.txt")).exists();
+	}
+
+	/**
+	 * The zero-byte "folder marker" objects the S3 console creates, whose key ends in the delimiter.
+	 * v2 normalises such a key to an empty relative path, which resolves to the destination directory
+	 * itself and cannot be written as a file - so without the filter each one is a failed transfer,
+	 * and the step's failed-transfer check would turn a console-created folder into a failed build.
+	 */
+	@Test
+	public void folderMarkerObjectsAreSkippedRatherThanFailingTheDownload() {
+		File destination = this.folder.getRoot();
+
+		CompletedDirectoryDownload completed = this.download("a/b/",
+				Arrays.asList("a/b/", "a/b/x.txt"), destination);
+
+		assertThat(completed.failedTransfers()).isEmpty();
+		assertThat(new File(destination, "a/b/x.txt")).exists();
 	}
 }

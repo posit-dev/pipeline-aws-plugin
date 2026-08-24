@@ -135,6 +135,10 @@ public class S3DownloadStepTests {
 		ListObjectsV2Request.Builder listing = ListObjectsV2Request.builder();
 		captor.getValue().listObjectsRequestTransformer().accept(listing);
 		Assertions.assertThat(listing.build().prefix()).isEqualTo("a/b/");
+		// the prefix is folded into the destination so v2's key normalisation reproduces v1's layout;
+		// without this, reverting that leaves the whole suite green
+		Assertions.assertThat(captor.getValue().destination())
+				.endsWithRaw(java.nio.file.Paths.get("out", "a", "b"));
 	}
 
 	/**

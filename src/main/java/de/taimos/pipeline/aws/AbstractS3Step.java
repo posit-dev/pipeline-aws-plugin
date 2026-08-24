@@ -156,7 +156,7 @@ public abstract class AbstractS3Step extends Step {
 		 * CopyObject, which S3 rejects above 5 GiB - so copies that worked under v1 would start failing.
 		 */
 		public S3AsyncClientBuilder createS3AsyncClientBuilderForCopy() {
-			return this.createMultipartS3AsyncClientBuilder(copyMultipartConfiguration());
+			return this.createS3AsyncClientBuilder(copyMultipartConfiguration());
 		}
 
 		/**
@@ -164,27 +164,39 @@ public abstract class AbstractS3Step extends Step {
 		 * 5 GiB.
 		 */
 		public S3AsyncClientBuilder createS3AsyncClientBuilderForUpload() {
-			return this.createMultipartS3AsyncClientBuilder(uploadMultipartConfiguration());
+			return this.createS3AsyncClientBuilder(uploadMultipartConfiguration());
 		}
 
 		/**
-		 * Downloads deliberately do not enable multipart, which is why this does not share the upload
-		 * builder.
+		 * Null: downloads deliberately do not enable multipart, which is what makes this a separate
+		 * factory from the upload one rather than a delegation to it.
 		 *
 		 * v1 had no multipart download - TransferManagerConfiguration carries thresholds and part sizes
 		 * for uploads and copies only - so a download was one GetObject however large the object was.
-		 * SDK v2 does support it (DownloadObjectHelper, MultipartDownloaderSubscriber), and enabling it
-		 * would split a download into ranged GETs sized by the part size: roughly a thousand requests
-		 * for a 5 GiB object against v1's one. There is no correctness reason to turn it on - unlike
-		 * uploads and copies, a single-part download of a large object is not rejected - so it stays off
-		 * and matches v1.
+		 * SDK v2 does support it (DownloadObjectHelper, MultipartDownloaderSubscriber), fetching the
+		 * object part by part: one GetObject per part it was uploaded with, discovered from the first
+		 * response's partsCount. The configured part size does not size those requests, and an object
+		 * stored by a single PutObject still comes back in one. Turning it on would therefore multiply
+		 * requests for objects this plugin itself uploaded in parts, and buy nothing in return: unlike
+		 * an upload or a copy, a single-request download of a large object is never rejected.
 		 */
-		public S3AsyncClientBuilder createS3AsyncClientBuilderForDownload() {
-			return this.applyTo(S3AsyncClient.builder());
+		static MultipartConfiguration downloadMultipartConfiguration() {
+			return null;
 		}
 
-		private S3AsyncClientBuilder createMultipartS3AsyncClientBuilder(MultipartConfiguration multipartConfiguration) {
-			return this.applyTo(S3AsyncClient.builder())
+		public S3AsyncClientBuilder createS3AsyncClientBuilderForDownload() {
+			return this.createS3AsyncClientBuilder(downloadMultipartConfiguration());
+		}
+
+		/**
+		 * A null configuration means "no multipart", which is a download.
+		 */
+		private S3AsyncClientBuilder createS3AsyncClientBuilder(MultipartConfiguration multipartConfiguration) {
+			S3AsyncClientBuilder builder = this.applyTo(S3AsyncClient.builder());
+			if (multipartConfiguration == null) {
+				return builder;
+			}
+			return builder
 					.multipartEnabled(true)
 					.multipartConfiguration(multipartConfiguration);
 		}

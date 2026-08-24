@@ -44,8 +44,8 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
 import java.io.File;
-import java.nio.file.Path;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Set;
 
 public class S3DownloadStep extends AbstractS3Step {
@@ -119,8 +119,9 @@ public class S3DownloadStep extends AbstractS3Step {
 	 * and only a later step reading the file by its full key path notices. Pushing the prefix into
 	 * the destination restores v1's layout, because v2 then strips it back off each key.
 	 *
-	 * Resolved segment by segment rather than by handing "a/b" to resolve, because this runs on the
-	 * agent and an agent may be Windows.
+	 * Resolved segment by segment rather than by handing the whole prefix to resolve, so that the
+	 * shapes a user-supplied path can take - a leading slash, a trailing one, a doubled separator in
+	 * a//b/ - are absorbed by the empty-segment check rather than producing empty path elements.
 	 */
 	static Path destinationFor(File localFile, String prefix) {
 		Path destination = localFile.toPath();
@@ -130,6 +131,26 @@ public class S3DownloadStep extends AbstractS3Step {
 			}
 		}
 		return destination;
+	}
+
+	/**
+	 * Built here rather than inline so the layout test can issue exactly the request the step issues:
+	 * the resulting on-disk layout depends on the destination and the listing prefix together, and a
+	 * test that rebuilds the request itself can silently stop matching.
+	 *
+	 * The filter reproduces v1, which skipped keys ending in the delimiter. Those are the zero-byte
+	 * "folder marker" objects the S3 console creates, and v2 normalises such a key to an empty
+	 * relative path - resolving to the destination directory itself, which cannot be written as a
+	 * file. Without the filter each one becomes a failed transfer, and the failed-transfer check
+	 * below would turn a console-created folder into a failed build.
+	 */
+	static DownloadDirectoryRequest downloadDirectoryRequest(String bucket, File localFile, String prefix) {
+		return DownloadDirectoryRequest.builder()
+				.bucket(bucket)
+				.destination(destinationFor(localFile, prefix))
+				.listObjectsV2RequestTransformer(list -> list.prefix(prefix))
+				.filter(s3Object -> !s3Object.key().endsWith("/"))
+				.build();
 	}
 
 	public static class Execution extends SynchronousNonBlockingStepExecution<Void> {
@@ -225,11 +246,8 @@ public class S3DownloadStep extends AbstractS3Step {
 		 */
 		private void downloadDirectory(S3TransferManager mgr, File localFile) throws InterruptedException {
 			String prefix = this.path == null ? "" : this.path;
-			CompletedDirectoryDownload completed = S3Utils.joinTransfer(mgr.downloadDirectory(DownloadDirectoryRequest.builder()
-					.bucket(this.bucket)
-					.destination(S3DownloadStep.destinationFor(localFile, prefix))
-					.listObjectsV2RequestTransformer(list -> list.prefix(prefix))
-					.build()).completionFuture());
+			CompletedDirectoryDownload completed = S3Utils.joinTransfer(mgr.downloadDirectory(
+					S3DownloadStep.downloadDirectoryRequest(this.bucket, localFile, prefix)).completionFuture());
 
 			if (!completed.failedTransfers().isEmpty()) {
 				for (FailedFileDownload failure : completed.failedTransfers()) {

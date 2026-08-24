@@ -299,6 +299,11 @@ s3Download(file:'file.txt', bucket:'my-bucket', path:'path/to/source/file.txt', 
 s3Download(file:'targetFolder/', bucket:'my-bucket', path:'path/to/sourceFolder/', force:true)
 ```
 
+Each object is written under the target folder at its full key path, not flattened: the second
+example above puts `path/to/sourceFolder/a/b.txt` at `targetFolder/path/to/sourceFolder/a/b.txt`.
+Zero-byte "folder marker" objects - the ones the S3 console creates for an empty folder - are
+skipped. The build fails if any object under the prefix could not be downloaded.
+
 ### s3Copy
 
 Copy file between S3 buckets.
@@ -1226,9 +1231,10 @@ ebWaitOnEnvironmentHealth(
   digest of the part digests with a `-N` suffix, rather than the content MD5 - and the part size
   decides that ETag's value and its `N`. A pipeline comparing an ETag against a locally computed
   digest, or against one recorded from a previous run, depends on both.
-  `s3Download` does not use a multipart transfer. SDK v2 can split a download into ranged GETs, but
-  v1 had no such thing - a download was one request however large the object - and unlike an upload
-  or a copy there is no size at which a single-request download is rejected, so it is left off.
+  `s3Download` does not use a multipart transfer. SDK v2 can fetch an object part by part - one
+  request per part it was uploaded with - but v1 had no such thing, a download was one request
+  however large the object, and unlike an upload or a copy there is no size at which a
+  single-request download is rejected. Leaving it off keeps v1's request count.
 * **Breaking**: `acl: 'LogDeliveryWrite'` is no longer accepted by `s3Copy` or `s3Upload`. It is a
   bucket ACL, and SDK v2 models object and bucket canned ACLs separately, so it has no object-level
   counterpart. S3 rejected it on an object under v1 too - what changes is that the build now fails
