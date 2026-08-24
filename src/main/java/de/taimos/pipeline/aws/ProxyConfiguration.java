@@ -133,6 +133,20 @@ class ProxyConfiguration {
 	 * users who set only that variable.
 	 */
 	static software.amazon.awssdk.http.apache.ProxyConfiguration buildV2ProxyConfiguration(EnvVars vars) {
+		return resolveV2ProxySettings(vars).toProxyConfiguration();
+	}
+
+	/**
+	 * The same settings expressed for the netty client, which S3TransferManager's asynchronous client
+	 * uses. Netty's ProxyConfiguration takes host, port and scheme separately instead of a single
+	 * endpoint URI, so the assembly differs, but the resolution above is shared and the resulting
+	 * proxy is the same one the synchronous clients get.
+	 */
+	static software.amazon.awssdk.http.nio.netty.ProxyConfiguration buildV2NettyProxyConfiguration(EnvVars vars) {
+		return resolveV2ProxySettings(vars).toNettyProxyConfiguration();
+	}
+
+	private static V2ProxySettings resolveV2ProxySettings(EnvVars vars) {
 		V2ProxySettings settings = new V2ProxySettings();
 
 		useJenkinsProxyV2(settings);
@@ -149,7 +163,7 @@ class ProxyConfiguration {
 
 		useSystemPropertiesV2(settings);
 
-		return settings.toProxyConfiguration();
+		return settings;
 	}
 
 	/**
@@ -260,6 +274,34 @@ class ProxyConfiguration {
 			if (this.host != null && !this.host.isEmpty()) {
 				String authority = this.port == UNSET_PORT ? this.host : this.host + ":" + this.port;
 				builder.endpoint(URI.create("http://" + authority));
+			}
+			if (this.username != null) {
+				builder.username(this.username);
+			}
+			if (this.password != null) {
+				builder.password(this.password);
+			}
+			if (this.nonProxyHosts != null) {
+				builder.nonProxyHosts(this.nonProxyHosts);
+			}
+			return builder.build();
+		}
+
+		private software.amazon.awssdk.http.nio.netty.ProxyConfiguration toNettyProxyConfiguration() {
+			// Same reasoning as above: no environment or system-property resolution of the SDK's own,
+			// and the scheme pinned to http because v1 connects to the proxy in plain HTTP whatever
+			// scheme the proxy URL carried.
+			software.amazon.awssdk.http.nio.netty.ProxyConfiguration.Builder builder =
+					software.amazon.awssdk.http.nio.netty.ProxyConfiguration.builder()
+							.useSystemPropertyValues(false)
+							.useEnvironmentVariableValues(false)
+							.scheme("http");
+
+			if (this.host != null && !this.host.isEmpty()) {
+				builder.host(this.host);
+				if (this.port != UNSET_PORT) {
+					builder.port(this.port);
+				}
 			}
 			if (this.username != null) {
 				builder.username(this.username);

@@ -1193,6 +1193,15 @@ ebWaitOnEnvironmentHealth(
   front with a message naming the parameter.
 * `s3PresignURL` now honours `pathStyleAccessEnabled`, which reaches the presigner alongside the
   other S3 options.
+* `s3Copy` now uses the AWS SDK v2 transfer manager. The `acl` parameter keeps its v1 spellings
+  (`acl: 'PublicRead'`, not `'PUBLIC_READ'`) so existing Jenkinsfiles are unaffected.
+* **Breaking**: `acl: 'LogDeliveryWrite'` is no longer accepted by `s3Copy` or `s3Upload`. It is a
+  bucket ACL, and SDK v2 models object and bucket canned ACLs separately, so it has no object-level
+  counterpart. S3 rejected it on an object under v1 too - what changes is that the build now fails
+  when the value is bound rather than when the request is sent.
+* This release adds the netty asynchronous HTTP client, which the v2 transfer manager requires. It is
+  the one AWS SDK module that ships to agents, since `s3Upload` and `s3Download` build their own
+  clients there.
 * `s3Delete`, `s3FindFiles` and `s3DoesObjectExist` now use the AWS SDK v2 S3 client. The
   `pathStyleAccessEnabled` and `payloadSigningEnabled` parameters still work; v2 has no direct
   equivalent of the latter, so it is expressed as disabling `aws-chunked` encoding, which is the

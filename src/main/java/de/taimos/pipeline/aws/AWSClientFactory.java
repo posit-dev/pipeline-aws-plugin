@@ -46,9 +46,11 @@ import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
+import software.amazon.awssdk.core.client.builder.SdkAsyncClientBuilder;
 import software.amazon.awssdk.core.client.builder.SdkSyncClientBuilder;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
+import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import software.amazon.awssdk.services.s3.S3BaseClientBuilder;
 import software.amazon.awssdk.services.s3.S3Configuration;
@@ -275,12 +277,12 @@ public class AWSClientFactory implements Serializable {
 
 		if (clientBuilder instanceof SdkSyncClientBuilder) {
 			((SdkSyncClientBuilder<?, ?>) clientBuilder).httpClient(getV2SyncHttpClient(vars));
+		} else if (clientBuilder instanceof SdkAsyncClientBuilder) {
+			((SdkAsyncClientBuilder<?, ?>) clientBuilder).httpClient(getV2AsyncHttpClient(vars));
 		} else {
-			// Async builders need their HTTP client configured through a different interface, and
-			// with a different dependency (netty). Nothing here builds one yet; failing loudly
-			// means the first service that does cannot silently lose the socket timeout and proxy
-			// settings applied above.
-			throw new IllegalStateException("Asynchronous AWS clients are not supported yet: " + clientBuilder.getClass().getName());
+			// Neither interface means the socket timeout and proxy settings resolved above would be
+			// silently dropped, which is worse than refusing to build the client.
+			throw new IllegalStateException("Unsupported AWS client builder: " + clientBuilder.getClass().getName());
 		}
 
 		return clientBuilder;
@@ -348,6 +350,23 @@ public class AWSClientFactory implements Serializable {
 
 	static Duration getV2SocketTimeout(EnvVars vars) {
 		return Duration.ofMillis(Integer.parseInt(vars.get(AWS_SDK_SOCKET_TIMEOUT, "50000")));
+	}
+
+	/**
+	 * Only S3TransferManager needs this: it has no synchronous form, so s3Upload, s3Download and
+	 * s3Copy build an S3AsyncClient for it.
+	 *
+	 * AWS_SDK_SOCKET_TIMEOUT maps onto readTimeout and writeTimeout together. v1's ClientConfiguration
+	 * had a single socket timeout covering both directions, and netty splits them, so applying it to
+	 * only one would quietly halve what the setting covers.
+	 */
+	static software.amazon.awssdk.http.async.SdkAsyncHttpClient getV2AsyncHttpClient(EnvVars vars) {
+		Duration socketTimeout = getV2SocketTimeout(vars);
+		return NettyNioAsyncHttpClient.builder()
+				.readTimeout(socketTimeout)
+				.writeTimeout(socketTimeout)
+				.proxyConfiguration(ProxyConfiguration.buildV2NettyProxyConfiguration(vars))
+				.build();
 	}
 
 	static software.amazon.awssdk.http.SdkHttpClient getV2SyncHttpClient(EnvVars vars) {

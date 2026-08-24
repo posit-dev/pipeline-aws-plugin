@@ -28,6 +28,8 @@ import org.kohsuke.stapler.DataBoundSetter;
 
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 
+import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
 import software.amazon.awssdk.services.s3.S3BaseClientBuilder;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
@@ -100,6 +102,13 @@ public abstract class AbstractS3Step extends Step {
 
 		public S3ClientBuilder createS3ClientBuilder() {
 			return this.applyTo(S3Client.builder());
+		}
+
+		/**
+		 * Only for S3TransferManager, which has no synchronous form.
+		 */
+		public S3AsyncClientBuilder createS3AsyncClientBuilder() {
+			return this.applyTo(S3AsyncClient.builder());
 		}
 
 		/**

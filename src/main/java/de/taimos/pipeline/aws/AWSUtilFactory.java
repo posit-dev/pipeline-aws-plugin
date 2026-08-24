@@ -1,6 +1,8 @@
 package de.taimos.pipeline.aws;
 
 import software.amazon.awssdk.services.cloudformation.CloudFormationClient;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.transfer.s3.S3TransferManager;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.transfer.TransferManager;
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder;
@@ -19,6 +21,7 @@ public class AWSUtilFactory {
 	private static Function<String, CloudFormationStack> stackSupplier;
 	private static Function<String, CloudFormationStackSet> stackSetSupplier;
 	private static Supplier<TransferManager> transferManagerSupplier;
+	private static Supplier<S3TransferManager> v2TransferManagerSupplier;
 
 
 	@Restricted(NoExternalUse.class)
@@ -57,5 +60,23 @@ public class AWSUtilFactory {
 
 	public static void setTransferManagerSupplier(Supplier<TransferManager> tfSupplier) {
 		transferManagerSupplier = tfSupplier;
+	}
+
+	/**
+	 * The v2 transfer manager owns the async client it is given: closing it closes the client, which
+	 * is why callers use try-with-resources on the manager alone.
+	 */
+	public static S3TransferManager newV2TransferManager(S3AsyncClient s3Client) {
+		if (v2TransferManagerSupplier != null) {
+			return v2TransferManagerSupplier.get();
+		}
+		return S3TransferManager.builder()
+				.s3Client(s3Client)
+				.build();
+	}
+
+	@Restricted(NoExternalUse.class)
+	public static void setV2TransferManagerSupplier(Supplier<S3TransferManager> tfSupplier) {
+		v2TransferManagerSupplier = tfSupplier;
 	}
 }
