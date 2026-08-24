@@ -141,36 +141,49 @@ public abstract class AbstractS3Step extends Step {
 					.build();
 		}
 
+		/*
+		 * These are only for S3TransferManager, which has no synchronous form.
+		 *
+		 * One per operation rather than a single method taking the numbers as parameters: the upload
+		 * and copy figures differ by three orders of magnitude, and a call site passing the wrong one
+		 * would be a single-token slip with no visible symptom. There is deliberately no unqualified
+		 * overload either - one would become the default a new call site reaches for, which
+		 * reintroduces the same slip by omission.
+		 */
+
 		/**
-		 * Only for S3TransferManager, which has no synchronous form.
-		 *
 		 * multipartEnabled is not the SDK default, and without it the transfer manager issues a single
-		 * PutObject or CopyObject - which S3 rejects above 5 GiB, so objects that worked under v1 would
-		 * start failing.
-		 *
-		 * Named per operation rather than taking the numbers as parameters: the upload and copy figures
-		 * differ by three orders of magnitude, and a call site passing the wrong one would be a
-		 * single-token slip with no visible symptom. There is deliberately no unqualified overload -
-		 * one would become the default a new call site reaches for, which reintroduces the same slip by
-		 * omission.
-		 *
-		 * s3Download shares the upload figures: v1 had no separate download configuration, and a
-		 * download's part size is a transfer-chunking detail rather than something S3 records on the
-		 * object, so there is nothing to keep parity with.
+		 * CopyObject, which S3 rejects above 5 GiB - so copies that worked under v1 would start failing.
 		 */
 		public S3AsyncClientBuilder createS3AsyncClientBuilderForCopy() {
-			return this.createS3AsyncClientBuilder(copyMultipartConfiguration());
+			return this.createMultipartS3AsyncClientBuilder(copyMultipartConfiguration());
 		}
 
+		/**
+		 * As for copies: without multipartEnabled a single PutObject is issued, which S3 rejects above
+		 * 5 GiB.
+		 */
 		public S3AsyncClientBuilder createS3AsyncClientBuilderForUpload() {
-			return this.createS3AsyncClientBuilder(uploadMultipartConfiguration());
+			return this.createMultipartS3AsyncClientBuilder(uploadMultipartConfiguration());
 		}
 
+		/**
+		 * Downloads deliberately do not enable multipart, which is why this does not share the upload
+		 * builder.
+		 *
+		 * v1 had no multipart download - TransferManagerConfiguration carries thresholds and part sizes
+		 * for uploads and copies only - so a download was one GetObject however large the object was.
+		 * SDK v2 does support it (DownloadObjectHelper, MultipartDownloaderSubscriber), and enabling it
+		 * would split a download into ranged GETs sized by the part size: roughly a thousand requests
+		 * for a 5 GiB object against v1's one. There is no correctness reason to turn it on - unlike
+		 * uploads and copies, a single-part download of a large object is not rejected - so it stays off
+		 * and matches v1.
+		 */
 		public S3AsyncClientBuilder createS3AsyncClientBuilderForDownload() {
-			return this.createS3AsyncClientBuilder(uploadMultipartConfiguration());
+			return this.applyTo(S3AsyncClient.builder());
 		}
 
-		private S3AsyncClientBuilder createS3AsyncClientBuilder(MultipartConfiguration multipartConfiguration) {
+		private S3AsyncClientBuilder createMultipartS3AsyncClientBuilder(MultipartConfiguration multipartConfiguration) {
 			return this.applyTo(S3AsyncClient.builder())
 					.multipartEnabled(true)
 					.multipartConfiguration(multipartConfiguration);

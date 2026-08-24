@@ -1221,6 +1221,9 @@ ebWaitOnEnvironmentHealth(
   digest of the part digests with a `-N` suffix, rather than the content MD5 - and the part size
   decides that ETag's value and its `N`. A pipeline comparing an ETag against a locally computed
   digest, or against one recorded from a previous run, depends on both.
+  `s3Download` does not use a multipart transfer. SDK v2 can split a download into ranged GETs, but
+  v1 had no such thing - a download was one request however large the object - and unlike an upload
+  or a copy there is no size at which a single-request download is rejected, so it is left off.
 * **Breaking**: `acl: 'LogDeliveryWrite'` is no longer accepted by `s3Copy` or `s3Upload`. It is a
   bucket ACL, and SDK v2 models object and bucket canned ACLs separately, so it has no object-level
   counterpart. S3 rejected it on an object under v1 too - what changes is that the build now fails
