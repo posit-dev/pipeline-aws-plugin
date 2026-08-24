@@ -299,9 +299,12 @@ class ProxyConfiguration {
 
 			if (this.host != null && !this.host.isEmpty()) {
 				builder.host(this.host);
-				if (this.port != UNSET_PORT) {
-					builder.port(this.port);
-				}
+				// The apache assembly leaves an unset port at -1 and lets apache resolve it against the
+				// scheme, which gives 80 for http. Netty has no such resolution with system properties
+				// disabled - its port simply defaults to 0 - so the same default is applied here
+				// explicitly. Without this an async transfer would dial proxy:0 where the sync clients
+				// work, which is exactly the divergence sharing this resolution is meant to prevent.
+				builder.port(this.port == UNSET_PORT ? HTTP_PORT : this.port);
 			}
 			if (this.username != null) {
 				builder.username(this.username);

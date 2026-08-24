@@ -278,7 +278,7 @@ public class AWSClientFactory implements Serializable {
 		if (clientBuilder instanceof SdkSyncClientBuilder) {
 			((SdkSyncClientBuilder<?, ?>) clientBuilder).httpClient(getV2SyncHttpClient(vars));
 		} else if (clientBuilder instanceof SdkAsyncClientBuilder) {
-			((SdkAsyncClientBuilder<?, ?>) clientBuilder).httpClient(getV2AsyncHttpClient(vars));
+			((SdkAsyncClientBuilder<?, ?>) clientBuilder).httpClientBuilder(getV2AsyncHttpClientBuilder(vars));
 		} else {
 			// Neither interface means the socket timeout and proxy settings resolved above would be
 			// silently dropped, which is worse than refusing to build the client.
@@ -356,17 +356,21 @@ public class AWSClientFactory implements Serializable {
 	 * Only S3TransferManager needs this: it has no synchronous form, so s3Upload, s3Download and
 	 * s3Copy build an S3AsyncClient for it.
 	 *
+	 * A builder rather than a built client, so that closing the SDK client shuts the netty event loop
+	 * down with it. httpClient(instance) leaves ownership with the caller and the SDK never closes it,
+	 * which for netty means leaking an EventLoopGroup - threads, pooled buffers and sockets - on every
+	 * invocation, on agents as well as the controller.
+	 *
 	 * AWS_SDK_SOCKET_TIMEOUT maps onto readTimeout and writeTimeout together. v1's ClientConfiguration
 	 * had a single socket timeout covering both directions, and netty splits them, so applying it to
 	 * only one would quietly halve what the setting covers.
 	 */
-	static software.amazon.awssdk.http.async.SdkAsyncHttpClient getV2AsyncHttpClient(EnvVars vars) {
+	static software.amazon.awssdk.http.async.SdkAsyncHttpClient.Builder<?> getV2AsyncHttpClientBuilder(EnvVars vars) {
 		Duration socketTimeout = getV2SocketTimeout(vars);
 		return NettyNioAsyncHttpClient.builder()
 				.readTimeout(socketTimeout)
 				.writeTimeout(socketTimeout)
-				.proxyConfiguration(ProxyConfiguration.buildV2NettyProxyConfiguration(vars))
-				.build();
+				.proxyConfiguration(ProxyConfiguration.buildV2NettyProxyConfiguration(vars));
 	}
 
 	static software.amazon.awssdk.http.SdkHttpClient getV2SyncHttpClient(EnvVars vars) {

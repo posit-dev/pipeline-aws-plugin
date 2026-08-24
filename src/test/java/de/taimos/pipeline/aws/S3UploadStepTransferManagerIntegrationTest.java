@@ -20,7 +20,14 @@ import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 import software.amazon.awssdk.transfer.s3.model.CompletedFileUpload;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.transfer.s3.model.CompletedDirectoryUpload;
+import software.amazon.awssdk.transfer.s3.model.DirectoryUpload;
+import software.amazon.awssdk.transfer.s3.model.FailedFileUpload;
 import software.amazon.awssdk.transfer.s3.model.FileUpload;
+import software.amazon.awssdk.transfer.s3.model.UploadDirectoryRequest;
+
+import java.util.concurrent.CompletableFuture;
 import software.amazon.awssdk.transfer.s3.model.UploadFileRequest;
 import hudson.model.Run;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
@@ -98,7 +105,8 @@ public class S3UploadStepTransferManagerIntegrationTest {
 		Assert.assertEquals("test-bucket", captor.getValue().putObjectRequest().bucket());
 		Assert.assertEquals("subdir/test.txt", captor.getValue().putObjectRequest().key());
 		assertThat(captor.getValue().source().toString(), matchesRegex("^.*subdir.test.txt$"));
-		assertThat(captor.getValue().source().toString(), containsString("work"));
+		// the key is relative to workingDir, not to the workspace: 'work/' must not appear in it
+		assertThat(captor.getValue().putObjectRequest().key(), not(containsString("work")));
 	}
 
 	@Test
@@ -115,5 +123,79 @@ public class S3UploadStepTransferManagerIntegrationTest {
 		jenkinsRule.assertLogContains("Nothing to upload", run);
 
 		Mockito.verifyNoMoreInteractions(transferManager);
+	}
+
+	/**
+	 * The directory branch, which had no coverage at all.
+	 *
+	 * uploadDirectory hands each file's UploadFileRequest to the transformer with the bucket and key
+	 * already computed. The Consumer overload of putObjectRequest builds a *fresh* request rather than
+	 * mutating that one, so applying the options through it silently discarded both and submitted
+	 * every upload with a null bucket and key. Running the captured transformer over a pre-populated
+	 * builder is what catches that.
+	 */
+	@Test
+	public void directoryUploadKeepsTheBucketAndKeyTheTransferManagerComputed() throws Exception {
+		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "S3UploadDirTest");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  writeFile file: 'dir/a.txt', text: 'Hello!'\n"
+				+ "  s3Upload(bucket: 'test-bucket', file: 'dir', path: 'artifacts/', kmsId: 'my-key')"
+				+ "}\n", true)
+		);
+
+		DirectoryUpload upload = Mockito.mock(DirectoryUpload.class);
+		Mockito.when(upload.completionFuture()).thenReturn(CompletableFuture.completedFuture(
+				CompletedDirectoryUpload.builder().failedTransfers(java.util.Collections.emptyList()).build()));
+		Mockito.when(transferManager.uploadDirectory(Mockito.any(UploadDirectoryRequest.class))).thenReturn(upload);
+
+		jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+
+		ArgumentCaptor<UploadDirectoryRequest> captor = ArgumentCaptor.forClass(UploadDirectoryRequest.class);
+		Mockito.verify(transferManager).uploadDirectory(captor.capture());
+
+		// v1 normalised the prefix before joining it to each key; v2 joins with a delimiter, so a
+		// trailing slash here would name every object 'artifacts//a.txt'
+		Assert.assertEquals("artifacts", captor.getValue().s3Prefix().orElse(null));
+
+		UploadFileRequest.Builder perFile = UploadFileRequest.builder()
+				.source(java.nio.file.Paths.get("a.txt"))
+				.putObjectRequest(PutObjectRequest.builder().bucket("test-bucket").key("artifacts/a.txt").build());
+		captor.getValue().uploadFileRequestTransformer().accept(perFile);
+		PutObjectRequest transformed = perFile.build().putObjectRequest();
+
+		Assert.assertEquals("test-bucket", transformed.bucket());
+		Assert.assertEquals("artifacts/a.txt", transformed.key());
+		Assert.assertEquals("my-key", transformed.ssekmsKeyId());
+	}
+
+	/**
+	 * The failed-transfer check the changelog advertises: v2 completes the future normally and lists
+	 * per-file failures, so without it a partial upload would look like a clean one.
+	 */
+	@Test
+	public void aPartlyFailedDirectoryUploadFailsTheBuild() throws Exception {
+		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "S3UploadDirFailTest");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  writeFile file: 'dir/a.txt', text: 'Hello!'\n"
+				+ "  s3Upload(bucket: 'test-bucket', file: 'dir')"
+				+ "}\n", true)
+		);
+
+		DirectoryUpload upload = Mockito.mock(DirectoryUpload.class);
+		Mockito.when(upload.completionFuture()).thenReturn(CompletableFuture.completedFuture(
+				CompletedDirectoryUpload.builder().failedTransfers(java.util.Collections.singletonList(
+						FailedFileUpload.builder()
+								.exception(new RuntimeException("denied"))
+								.request(UploadFileRequest.builder()
+										.source(java.nio.file.Paths.get("a.txt"))
+										.putObjectRequest(PutObjectRequest.builder().bucket("test-bucket").key("a.txt").build())
+										.build())
+								.build())).build()));
+		Mockito.when(transferManager.uploadDirectory(Mockito.any(UploadDirectoryRequest.class))).thenReturn(upload);
+
+		Run run = jenkinsRule.assertBuildStatus(hudson.model.Result.FAILURE, job.scheduleBuild2(0));
+		jenkinsRule.assertLogContains("failed for 1 file(s)", run);
 	}
 }

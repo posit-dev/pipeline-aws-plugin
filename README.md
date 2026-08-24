@@ -1210,6 +1210,11 @@ ebWaitOnEnvironmentHealth(
   partly-downloaded directory would have looked like a clean download.
 * `s3Copy` now uses the AWS SDK v2 transfer manager. The `acl` parameter keeps its v1 spellings
   (`acl: 'PublicRead'`, not `'PUBLIC_READ'`) so existing Jenkinsfiles are unaffected.
+* Fixed: `s3Upload` of a directory sent every file with no bucket and no key, so the upload failed
+  for all of them. Fixed before release; it never shipped.
+* Fixed: `s3Upload` of a directory with a `path` ending in `/` named every object `prefix//name`.
+* `s3Copy` and `s3Upload` again use a multipart transfer for large objects. SDK v2's asynchronous
+  client does not do this by default, where v1's transfer manager switched automatically above 5 GB.
 * **Breaking**: `acl: 'LogDeliveryWrite'` is no longer accepted by `s3Copy` or `s3Upload`. It is a
   bucket ACL, and SDK v2 models object and bucket canned ACLs separately, so it has no object-level
   counterpart. S3 rejected it on an object under v1 too - what changes is that the build now fails

@@ -384,9 +384,10 @@ public class S3UploadStep extends AbstractS3Step {
 						.key(path)
 						.contentLength((long) bytes.length)).build();
 
-				S3AsyncClient s3Client = AWSClientFactory.create(amazonS3ClientOptions.createS3AsyncClientBuilder(), Execution.this.getContext(), envVars);
-				// The transfer manager owns the client it is built with, so closing it closes both.
-				try (S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
+				// S3TransferManager only closes an async client it created itself, so a client passed to
+				// it has to be closed here or its netty event loop outlives the step.
+				try (S3AsyncClient s3Client = AWSClientFactory.create(amazonS3ClientOptions.createS3AsyncClientBuilder(), Execution.this.getContext(), envVars);
+						S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
 					S3Utils.joinTransfer(mgr.upload(UploadRequest.builder()
 							.putObjectRequest(request)
 							.requestBody(AsyncRequestBody.fromBytes(bytes))
@@ -458,9 +459,10 @@ public class S3UploadStep extends AbstractS3Step {
 
 		@Override
 		public Void invoke(File localFile, VirtualChannel channel) throws IOException, InterruptedException {
-			S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilder(), this.envVars);
-			// The transfer manager owns the client it is built with, so closing it closes both.
-			try (S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
+			// S3TransferManager only closes an async client it created itself, so a client passed to it
+			// has to be closed here - these run on agents, which stay up across many builds.
+			try (S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilder(), this.envVars);
+					S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
 				if (localFile.isFile()) {
 					String key = this.path;
 					if (key.endsWith("/") || key.isEmpty()) {
@@ -490,15 +492,24 @@ public class S3UploadStep extends AbstractS3Step {
 	 * successful one.
 	 */
 	private static void uploadDirectory(S3TransferManager mgr, String bucket, String path, File localDirectory,
-			S3UploadOptions options, TaskListener taskListener) throws IOException {
+			S3UploadOptions options, TaskListener taskListener) throws IOException, InterruptedException {
 		logKms(options, taskListener);
 		UploadDirectoryRequest.Builder request = UploadDirectoryRequest.builder()
 				.bucket(bucket)
 				.source(localDirectory.toPath())
-				// v2's replacement for ObjectMetadataProvider and ObjectTaggingProvider together
-				.uploadFileRequestTransformer(upload -> upload.putObjectRequest(put -> options.applyTo(put)));
-		if (path != null && !path.isEmpty()) {
-			request.s3Prefix(path);
+				// v2's replacement for ObjectMetadataProvider and ObjectTaggingProvider together.
+				// The request has to be mutated rather than rebuilt: the Consumer overload of
+				// putObjectRequest constructs a fresh builder, which would throw away the bucket and
+				// key the transfer manager has already computed for this file and submit every upload
+				// with both null.
+				.uploadFileRequestTransformer(upload -> upload.putObjectRequest(
+						options.applyTo(upload.build().putObjectRequest().toBuilder()).build()));
+		// v1 normalised the prefix before joining it to each relative key; v2 joins with a delimiter
+		// unconditionally, so passing 'artifacts/' through verbatim would name every object
+		// 'artifacts//x.txt'. Shared with uploadFileList so the two paths agree.
+		String prefix = trimTrailingSlash(path);
+		if (!prefix.isEmpty()) {
+			request.s3Prefix(prefix);
 		}
 
 		CompletedDirectoryUpload completed = S3Utils.joinTransfer(mgr.uploadDirectory(request.build()).completionFuture());
@@ -519,10 +530,11 @@ public class S3UploadStep extends AbstractS3Step {
 	 * uploadFileList was; joining one at a time would serialise the whole upload.
 	 */
 	private static void uploadFileList(S3TransferManager mgr, String bucket, String path, File baseDirectory,
-			List<File> fileList, S3UploadOptions options, TaskListener taskListener) throws IOException {
+			List<File> fileList, S3UploadOptions options, TaskListener taskListener) throws IOException, InterruptedException {
 		logKms(options, taskListener);
 		Path base = baseDirectory.toPath().toAbsolutePath().normalize();
-		String prefix = path == null || path.isEmpty() ? "" : (path.endsWith("/") ? path : path + "/");
+		String trimmed = trimTrailingSlash(path);
+		String prefix = trimmed.isEmpty() ? "" : trimmed + "/";
 
 		Map<String, CompletableFuture<CompletedFileUpload>> uploads = new LinkedHashMap<>();
 		for (File file : fileList) {
@@ -547,6 +559,17 @@ public class S3UploadStep extends AbstractS3Step {
 					+ failures.size() + " file(s); see the log above");
 		}
 		taskListener.getLogger().println("Finished: upload to s3://" + bucket + "/" + path);
+	}
+
+	private static String trimTrailingSlash(String path) {
+		if (path == null || path.isEmpty()) {
+			return "";
+		}
+		String trimmed = path;
+		while (trimmed.endsWith("/")) {
+			trimmed = trimmed.substring(0, trimmed.length() - 1);
+		}
+		return trimmed;
 	}
 
 	private static void logKms(S3UploadOptions options, TaskListener taskListener) {
@@ -583,8 +606,8 @@ public class S3UploadStep extends AbstractS3Step {
 
 		@Override
 		public Void invoke(File localFile, VirtualChannel channel) throws IOException, InterruptedException {
-			S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilder(), this.envVars);
-			try (S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
+			try (S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilder(), this.envVars);
+					S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
 				uploadFileList(mgr, this.bucket, this.path, localFile, this.fileList, this.options, this.taskListener);
 			}
 			return null;

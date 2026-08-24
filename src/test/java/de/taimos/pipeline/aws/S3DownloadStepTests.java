@@ -50,8 +50,9 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * s3Download runs its transfer inside a MasterToSlaveFileCallable. These exercise it on the
- * controller, which is where JenkinsRule runs the workspace; the callable itself is covered over
- * remoting by S3AgentIntegrationTest.
+ * controller, which is where JenkinsRule runs the workspace. There is no agent-side coverage for
+ * s3Download yet; s3Upload's remoting path is covered by S3UploadStepIntegrationTest, which runs on a
+ * real agent.
  */
 public class S3DownloadStepTests {
 

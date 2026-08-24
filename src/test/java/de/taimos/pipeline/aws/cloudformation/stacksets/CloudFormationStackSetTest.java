@@ -28,9 +28,12 @@ public class CloudFormationStackSetTest {
 	 * overridden sleep: if that seam is ever bypassed - the sleep inlined back into a loop, or
 	 * sleepBetweenPolls made private, final or static - they would each wait 50k x 1s rather than fail,
 	 * and a wedged build is much worse to diagnose than a red one.
+	 *
+	 * 30s against an observed ~2s for the slowest test here: enough headroom for the slower of the two
+	 * CI platforms without letting a real slowdown burn two minutes per method before reporting.
 	 */
 	@Rule
-	public Timeout timeout = Timeout.seconds(120);
+	public Timeout timeout = Timeout.seconds(30);
 
 	private CloudFormationClient client;
 	private SleepStrategy sleepStrategy;
@@ -337,8 +340,16 @@ public class CloudFormationStackSetTest {
 				thrown[0] = t;
 			}
 		}, "poll", SMALL_STACK_BYTES);
+		// daemon, so that if the timeout below fires while this thread is sleeping - the seam-bypassed
+		// case - the orphan cannot hold the JVM open after the test has been reported
+		thread.setDaemon(true);
 		thread.start();
-		thread.join();
+		try {
+			thread.join();
+		} catch (InterruptedException e) {
+			thread.interrupt();
+			throw e;
+		}
 		if (thrown[0] != null) {
 			throw thrown[0];
 		}

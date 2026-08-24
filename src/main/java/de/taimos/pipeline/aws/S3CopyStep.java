@@ -262,9 +262,10 @@ public class S3CopyStep extends AbstractS3Step {
 				request.ssekmsKeyId(kmsId).serverSideEncryption(ServerSideEncryption.AWS_KMS);
 			}
 
-			S3AsyncClient s3client = AWSClientFactory.create(s3ClientOptions.createS3AsyncClientBuilder(), this.getContext(), envVars);
-			// The transfer manager owns the client it is built with, so closing it closes both.
-			try (S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3client)) {
+			// S3TransferManager only closes an async client it created itself, so a client passed to
+			// it has to be closed here or its netty event loop outlives the step.
+			try (S3AsyncClient s3client = AWSClientFactory.create(s3ClientOptions.createS3AsyncClientBuilder(), this.getContext(), envVars);
+					S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3client)) {
 				S3Utils.joinTransfer(mgr.copy(CopyRequest.builder()
 						.copyObjectRequest(request.build()).build()).completionFuture());
 			}

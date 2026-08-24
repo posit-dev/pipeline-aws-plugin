@@ -174,9 +174,11 @@ public class S3DownloadStep extends AbstractS3Step {
 
 		@Override
 		public Void invoke(File localFile, VirtualChannel channel) throws IOException, InterruptedException {
-			S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilder(), this.envVars);
-			// The transfer manager owns the client it is built with, so closing it closes both.
-			try (S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
+			// S3TransferManager only closes an async client it created itself, so a client passed to it
+			// has to be closed here - on an agent that runs many builds, leaking a netty event loop per
+			// download adds up.
+			try (S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilder(), this.envVars);
+					S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
 				if (this.path == null || this.path.isEmpty() || this.path.endsWith("/")) {
 					this.downloadDirectory(mgr, localFile);
 				} else {
@@ -186,7 +188,7 @@ public class S3DownloadStep extends AbstractS3Step {
 			return null;
 		}
 
-		private void downloadFile(S3TransferManager mgr, File localFile) {
+		private void downloadFile(S3TransferManager mgr, File localFile) throws InterruptedException {
 			S3Utils.joinTransfer(mgr.downloadFile(DownloadFileRequest.builder()
 					.getObjectRequest(get -> get.bucket(this.bucket).key(this.path))
 					.destination(localFile)
@@ -200,7 +202,7 @@ public class S3DownloadStep extends AbstractS3Step {
 		 * a partly-downloaded directory would look like a clean download and the build would carry on
 		 * with missing files.
 		 */
-		private void downloadDirectory(S3TransferManager mgr, File localFile) {
+		private void downloadDirectory(S3TransferManager mgr, File localFile) throws InterruptedException {
 			String prefix = this.path == null ? "" : this.path;
 			CompletedDirectoryDownload completed = S3Utils.joinTransfer(mgr.downloadDirectory(DownloadDirectoryRequest.builder()
 					.bucket(this.bucket)

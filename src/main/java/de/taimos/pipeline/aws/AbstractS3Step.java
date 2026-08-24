@@ -106,9 +106,14 @@ public abstract class AbstractS3Step extends Step {
 
 		/**
 		 * Only for S3TransferManager, which has no synchronous form.
+		 *
+		 * multipartEnabled is not the SDK default, and without it the transfer manager issues a single
+		 * PutObject or CopyObject. v1's TransferManager switched to a multipart transfer above 5 GB by
+		 * itself, so leaving this off would mean s3Upload and s3Copy start failing on large objects
+		 * that used to work - S3 rejects a single-part copy or put over the limit.
 		 */
 		public S3AsyncClientBuilder createS3AsyncClientBuilder() {
-			return this.applyTo(S3AsyncClient.builder());
+			return this.applyTo(S3AsyncClient.builder()).multipartEnabled(true);
 		}
 
 		/**
