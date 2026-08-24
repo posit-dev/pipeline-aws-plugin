@@ -1193,6 +1193,10 @@ ebWaitOnEnvironmentHealth(
   front with a message naming the parameter.
 * `s3PresignURL` now honours `pathStyleAccessEnabled`, which reaches the presigner alongside the
   other S3 options.
+* `s3Download` of a directory (a `path` ending in `/`, or no `path`) now fails the build if any
+  individual object could not be downloaded, listing each failure. SDK v1 threw in that case; SDK v2
+  reports per-file failures on an otherwise successful transfer, so without an explicit check a
+  partly-downloaded directory would have looked like a clean download.
 * `s3Copy` now uses the AWS SDK v2 transfer manager. The `acl` parameter keeps its v1 spellings
   (`acl: 'PublicRead'`, not `'PUBLIC_READ'`) so existing Jenkinsfiles are unaffected.
 * **Breaking**: `acl: 'LogDeliveryWrite'` is no longer accepted by `s3Copy` or `s3Upload`. It is a

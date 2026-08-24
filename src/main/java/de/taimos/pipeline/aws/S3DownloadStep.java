@@ -21,12 +21,12 @@
 
 package de.taimos.pipeline.aws;
 
-import com.amazonaws.event.ProgressEventType;
-import com.amazonaws.event.ProgressListener;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.transfer.Download;
-import com.amazonaws.services.s3.transfer.MultipleFileDownload;
-import com.amazonaws.services.s3.transfer.TransferManager;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.transfer.s3.S3TransferManager;
+import software.amazon.awssdk.transfer.s3.model.CompletedDirectoryDownload;
+import software.amazon.awssdk.transfer.s3.model.DownloadDirectoryRequest;
+import software.amazon.awssdk.transfer.s3.model.DownloadFileRequest;
+import software.amazon.awssdk.transfer.s3.model.FailedFileDownload;
 import com.google.common.base.Preconditions;
 import de.taimos.pipeline.aws.utils.StepUtils;
 import hudson.EnvVars;
@@ -173,34 +173,48 @@ public class S3DownloadStep extends AbstractS3Step {
 
 		@Override
 		public Void invoke(File localFile, VirtualChannel channel) throws IOException, InterruptedException {
-			AmazonS3 s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createAmazonS3ClientBuilder(), this.envVars);
-			TransferManager mgr = AWSUtilFactory.newTransferManager(s3Client);
-
-			if (this.path == null || this.path.isEmpty() || this.path.endsWith("/")) {
-				try {
-					final MultipleFileDownload fileDownload = mgr.downloadDirectory(this.bucket, this.path, localFile);
-					fileDownload.waitForCompletion();
-					RemoteDownloader.this.taskListener.getLogger().println("Finished: " + fileDownload.getDescription());
+			S3AsyncClient s3Client = AWSClientFactory.create(this.amazonS3ClientOptions.createS3AsyncClientBuilder(), this.envVars);
+			// The transfer manager owns the client it is built with, so closing it closes both.
+			try (S3TransferManager mgr = AWSUtilFactory.newV2TransferManager(s3Client)) {
+				if (this.path == null || this.path.isEmpty() || this.path.endsWith("/")) {
+					this.downloadDirectory(mgr, localFile);
+				} else {
+					this.downloadFile(mgr, localFile);
 				}
-				finally {
-					mgr.shutdownNow();
-				}
-				return null;
-			} else {
-				try {
-					final Download download = mgr.download(this.bucket, this.path, localFile);
-					download.addProgressListener((ProgressListener) progressEvent -> {
-						if (progressEvent.getEventType() == ProgressEventType.TRANSFER_COMPLETED_EVENT) {
-							RemoteDownloader.this.taskListener.getLogger().println("Finished: " + download.getDescription());
-						}
-					});
-					download.waitForCompletion();
-				}
-				finally {
-					mgr.shutdownNow();
-				}
-				return null;
 			}
+			return null;
+		}
+
+		private void downloadFile(S3TransferManager mgr, File localFile) {
+			mgr.downloadFile(DownloadFileRequest.builder()
+					.getObjectRequest(get -> get.bucket(this.bucket).key(this.path))
+					.destination(localFile)
+					.build()).completionFuture().join();
+			this.taskListener.getLogger().println("Finished: download of s3://" + this.bucket + "/" + this.path);
+		}
+
+		/**
+		 * v1's MultipleFileDownload.waitForCompletion threw if any file in the directory failed. v2
+		 * completes successfully and reports the failures in failedTransfers(), so without this check
+		 * a partly-downloaded directory would look like a clean download and the build would carry on
+		 * with missing files.
+		 */
+		private void downloadDirectory(S3TransferManager mgr, File localFile) {
+			String prefix = this.path == null ? "" : this.path;
+			CompletedDirectoryDownload completed = mgr.downloadDirectory(DownloadDirectoryRequest.builder()
+					.bucket(this.bucket)
+					.destination(localFile.toPath())
+					.listObjectsV2RequestTransformer(list -> list.prefix(prefix))
+					.build()).completionFuture().join();
+
+			if (!completed.failedTransfers().isEmpty()) {
+				for (FailedFileDownload failure : completed.failedTransfers()) {
+					this.taskListener.getLogger().println("Failed: " + failure);
+				}
+				throw new RuntimeException("Download of s3://" + this.bucket + "/" + prefix + " failed for "
+						+ completed.failedTransfers().size() + " object(s); see the log above");
+			}
+			this.taskListener.getLogger().println("Finished: download of s3://" + this.bucket + "/" + prefix);
 		}
 
 	}
