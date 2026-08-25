@@ -24,7 +24,6 @@ package de.taimos.pipeline.aws;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
 import hudson.EnvVars;
 import jenkins.model.Jenkins;
 

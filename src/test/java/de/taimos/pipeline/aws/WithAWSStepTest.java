@@ -192,6 +192,10 @@ public class WithAWSStepTest {
 		// would make this depend on every other test class in the fork having reset it - a leaked
 		// delegate would surface here as a ClassCastException on someone else's mock. v2 exposes the
 		// override on the built client's configuration rather than on the builder.
+		//
+		// Closing the client does not release the ApacheHttpClient that configureV2Builder attaches:
+		// that is passed as an instance, so the SDK leaves it to the caller. One connection manager
+		// per test run is harmless, and the alternative is reaching into the factory's internals.
 		try (S3Client client = AWSClientFactory.configureV2Builder(S3Client.builder(), null, envVars).build()) {
 			Assert.assertEquals("https://minio.mycompany.com",
 					client.serviceClientConfiguration().endpointOverride().map(Object::toString).orElse(null));

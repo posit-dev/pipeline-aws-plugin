@@ -261,6 +261,8 @@ public class AWSClientFactory implements Serializable {
 			}
 		}
 
+		// Shared static instance, not a new one, so neither this method nor the clients it is handed
+		// to may close it - see DefaultCredentialsProviderIsSharedTest.
 		return DefaultCredentialsProvider.create();
 	}
 

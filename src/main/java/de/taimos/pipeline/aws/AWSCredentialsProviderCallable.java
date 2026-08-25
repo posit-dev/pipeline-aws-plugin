@@ -45,14 +45,16 @@ public class AWSCredentialsProviderCallable extends MasterToSlaveFileCallable<Se
 
 	@Override
 	public SerializableAWSCredentialsProvider invoke(File f, VirtualChannel vc) throws IOException, InterruptedException {
-		// Closed here: unlike v1's DefaultAWSCredentialsProviderChain, v2's provider is
-		// SdkAutoCloseable and holds a profile-file supplier and container/IMDS caches. The
-		// credentials are resolved eagerly in the constructor below, so nothing needs it afterwards -
-		// and with AWS_PIPELINE_STEPS_FROM_NODE this runs once per step per build.
-		try (DefaultCredentialsProvider provider = DefaultCredentialsProvider.create()) {
-			listener.getLogger().println("Retrieving credentials from node.");
-			return new SerializableAWSCredentialsProvider(provider);
-		}
+		// Deliberately not closed. DefaultCredentialsProvider is SdkAutoCloseable, but create()
+		// returns a shared static instance rather than a new one - AWSClientFactory hands the same
+		// object to every client built without static credentials or a profile - so closing it here
+		// would tear down the profile-file supplier and the container/IMDS caches for everything else
+		// in this JVM. On a long-lived agent the next step would get the already-closed instance back.
+		// There is nothing to leak: the instance is created once per JVM and reused, which is what
+		// DefaultCredentialsProviderIsSharedTest pins.
+		DefaultCredentialsProvider provider = DefaultCredentialsProvider.create();
+		listener.getLogger().println("Retrieving credentials from node.");
+		return new SerializableAWSCredentialsProvider(provider);
 	}
 
 	private static final long serialVersionUID = 1L;
