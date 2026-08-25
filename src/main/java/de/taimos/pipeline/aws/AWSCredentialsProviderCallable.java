@@ -51,7 +51,7 @@ public class AWSCredentialsProviderCallable extends MasterToSlaveFileCallable<Se
 		// would tear down the profile-file supplier and the container/IMDS caches for everything else
 		// in this JVM. On a long-lived agent the next step would get the already-closed instance back.
 		// There is nothing to leak: the instance is created once per JVM and reused, which is what
-		// DefaultCredentialsProviderIsSharedTest pins.
+		// CredentialsProviderOwnershipTest pins.
 		DefaultCredentialsProvider provider = DefaultCredentialsProvider.create();
 		listener.getLogger().println("Retrieving credentials from node.");
 		return new SerializableAWSCredentialsProvider(provider);

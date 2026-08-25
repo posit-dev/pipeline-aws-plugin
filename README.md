@@ -1238,6 +1238,11 @@ ebWaitOnEnvironmentHealth(
 * Fixed: `s3Upload` of a directory sent every file with no bucket and no key, so the upload failed
   for all of them. Fixed before release; it never shipped.
 * Fixed: `s3Upload` of a directory with a `path` ending in `/` named every object `prefix//name`.
+* Fixed: the first `s3Upload`, `s3Copy`, `s3Download` or `s3PresignURL` in a build no longer breaks
+  AWS credential resolution for everything after it. Those steps close their client when done, and an
+  SDK v2 client closes the credentials provider it was given - which, without explicit credentials or
+  a profile, is a process-wide shared instance. It is now wrapped so that closing a client leaves it
+  intact.
 * `s3Copy` and `s3Upload` again use a multipart transfer for large objects, at v1's settings: an
   upload becomes multipart above 16 MiB with 5 MiB parts, a copy above 5 GiB with 100 MiB parts. SDK
   v2's asynchronous client does no multipart transfer at all unless asked, and its own defaults are

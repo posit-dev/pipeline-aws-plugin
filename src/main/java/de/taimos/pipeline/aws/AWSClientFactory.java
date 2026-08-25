@@ -261,9 +261,25 @@ public class AWSClientFactory implements Serializable {
 			}
 		}
 
-		// Shared static instance, not a new one, so neither this method nor the clients it is handed
-		// to may close it - see DefaultCredentialsProviderIsSharedTest.
-		return DefaultCredentialsProvider.create();
+		return sharedDefaultCredentials();
+	}
+
+	/**
+	 * The default chain, wrapped so that closing a client cannot close it.
+	 *
+	 * DefaultCredentialsProvider.create() returns a shared static instance, and an SDK client or
+	 * presigner does close a caller-supplied credentials provider when it is SdkAutoCloseable - both
+	 * verified by CredentialsProviderOwnershipTest. Since the steps close their clients in
+	 * try-with-resources, handing the instance over directly would let the first s3Upload or s3Copy
+	 * of a build tear down the profile-file supplier and container/IMDS caches for the whole JVM.
+	 *
+	 * The wrapper delegates resolution but is not SdkAutoCloseable, so the client leaves it alone and
+	 * every client keeps sharing one credential cache - which is the point of the shared instance on
+	 * an EC2 agent, where the alternative is re-resolving IMDS per client.
+	 */
+	private static AwsCredentialsProvider sharedDefaultCredentials() {
+		DefaultCredentialsProvider shared = DefaultCredentialsProvider.create();
+		return shared::resolveCredentials;
 	}
 
 	private static AwsCredentialsProvider getV2CredentialsFromNode(StepContext context, EnvVars envVars) throws IOException, InterruptedException {
