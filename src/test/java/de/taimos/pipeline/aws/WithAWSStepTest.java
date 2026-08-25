@@ -300,7 +300,6 @@ public class WithAWSStepTest {
 		jenkinsRule.waitForCompletion(workflowRun);
 		jenkinsRule.assertBuildStatus(Result.FAILURE, workflowRun);
 		jenkinsRule.assertLogContains("Requesting assume role", workflowRun);
-		jenkinsRule.assertLogContains("Requesting assume role", workflowRun);
 		jenkinsRule.assertLogContains("Specified provider doesn't exist", workflowRun);
 	}
 
@@ -627,6 +626,9 @@ public class WithAWSStepTest {
 		jenkinsRule.waitForCompletion(workflowRun);
 		jenkinsRule.assertBuildStatus(Result.FAILURE, workflowRun);
 
+		// anchor: shows the run got past withCredentials with the inherited token installed,
+		// so the STS error below cannot have come from a failure earlier in the step
+		jenkinsRule.assertLogContains("Requesting assume role", workflowRun);
 		jenkinsRule.assertLogContains("Specified provider doesn't exist", workflowRun);
 	}
 
