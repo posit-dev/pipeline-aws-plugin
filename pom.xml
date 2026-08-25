@@ -76,7 +76,7 @@
         </pluginRepository>
     </pluginRepositories>
     <properties>
-        <revision>1.46</revision>
+        <revision>2.0</revision>
         <changelist>-SNAPSHOT</changelist>
         <!-- https://www.jenkins.io/doc/developer/plugin-development/choosing-jenkins-baseline/ -->
         <jenkins.baseline>2.541</jenkins.baseline>

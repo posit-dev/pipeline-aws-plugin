@@ -52,6 +52,42 @@ This plugins adds Jenkins pipeline steps to interact with the AWS API.
 
 [**see the changelog for release information**](#changelog)
 
+# Upgrading to 2.0
+
+2.0 replaces the AWS SDK for Java 1.x - which reached end of life on 31 December 2025 - with the
+AWS SDK for Java 2.x throughout the plugin
+([#341](https://github.com/jenkinsci/pipeline-aws-plugin/issues/341),
+[JENKINS-73650](https://issues.jenkins.io/browse/JENKINS-73650)). Step names and parameters are
+unchanged, and the legacy v1 spellings of parameter values (`acl: 'PublicRead'`, CloudFormation
+capabilities, Elastic Beanstalk health and status strings, ECR filters) are still accepted, so most
+pipelines need no edit at all.
+
+What you do need to check before upgrading:
+
+* **Your controller must run Jenkins 2.541.1 or newer**, and `aws-credentials` 265 or newer (the
+  version the plugin BOM supplies; the credentials API this plugin needs first shipped in
+  238.v8fb_588a_2b_e67). 1.45 is the last release usable on older controllers.
+* **`s3PresignURL`** now presigns a specific S3 operation rather than signing an arbitrary URL, so
+  `httpMethod` must be one of `GET`, `PUT`, `DELETE`, `HEAD` - `POST` and `PATCH` are rejected - and
+  `durationInSeconds` must be within 1..604800 (7 days).
+* **`acl: 'LogDeliveryWrite'`** is rejected by `s3Upload` and `s3Copy`. It is a bucket ACL with no
+  object-level counterpart; S3 rejected it on an object before, too.
+* **Steps that returned raw AWS response objects now return maps**: `cfnUpdateStackSet`,
+  `ecrDeleteImage` and `ecrSetRepositoryPolicy`. Read `result.stackSet.stackSetId` rather than
+  `result.getStackSet().getStackSetId()`. Sandboxed pipelines could never read those fields at all,
+  so only scripts running outside the sandbox are affected.
+* **`cfnValidate`** no longer returns the undocumented `sdkResponseMetadata` and `sdkHttpMetadata`
+  keys. The documented fields are unchanged.
+* **Catching AWS exceptions by type around an agent-side `s3Upload`/`s3Download` no longer works** -
+  they now arrive as `hudson.remoting.ProxyException`. Catch `Exception` and inspect the message.
+
+The changelog below lists these and the smaller behaviour changes - including several long-standing
+bugs fixed along the way - in full.
+
+Note that the AWS SDK v1 jar is still on the runtime classpath, because `aws-credentials` continues
+to declare it ([aws-credentials-plugin#284](https://github.com/jenkinsci/aws-credentials-plugin/pull/284)).
+No code in this plugin uses it.
+
 # Primary/Agent setups
 
 This plugin is not optimized to setups with a primary and multiple agents.
