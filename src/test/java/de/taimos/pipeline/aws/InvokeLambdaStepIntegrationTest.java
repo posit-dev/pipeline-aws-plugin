@@ -57,12 +57,12 @@ public class InvokeLambdaStepIntegrationTest {
 	@Before
 	public void setupSdk() throws Exception {
 		this.lambda = Mockito.mock(LambdaClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.lambda);
+		AWSClientFactory.setFactoryDelegate((x) -> this.lambda);
 	}
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	private void stubInvoke(String payload, String functionError) {

@@ -27,7 +27,7 @@ public class ECRListImagesStepTests {
 	@Before
 	public void setupSdk() throws Exception {
 		this.ecr = Mockito.mock(EcrClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.ecr);
+		AWSClientFactory.setFactoryDelegate((x) -> this.ecr);
 		// a real paginator over the mock, so the SDK's own paging issues the calls
 		Mockito.when(this.ecr.listImagesPaginator(Mockito.any(ListImagesRequest.class)))
 				.thenAnswer(invocation -> new ListImagesIterable(this.ecr, invocation.getArgument(0)));
@@ -35,7 +35,7 @@ public class ECRListImagesStepTests {
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	@Test

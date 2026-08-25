@@ -54,12 +54,12 @@ public class ELBHealthCheckStepsIntegrationTest {
 	@Before
 	public void setupSdk() throws Exception {
 		this.elb = Mockito.mock(ElasticLoadBalancingV2Client.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.elb);
+		AWSClientFactory.setFactoryDelegate((x) -> this.elb);
 	}
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	private void stubHealth(String instanceId, String state) {

@@ -21,8 +21,6 @@ package de.taimos.pipeline.aws;
  */
 
 
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.cloudbees.hudson.plugins.folder.AbstractFolder;
 import com.cloudbees.hudson.plugins.folder.Folder;
 import com.cloudbees.hudson.plugins.folder.properties.FolderCredentialsProvider;
@@ -39,6 +37,7 @@ import com.cloudbees.plugins.credentials.impl.BaseStandardCredentials;
 import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl;
 
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.identity.spi.AwsSessionCredentialsIdentity;
@@ -185,10 +184,15 @@ public class WithAWSStepTest {
 	public void testSettingEndpointUrl() throws Exception {
 		final EnvVars envVars = new EnvVars();
 		envVars.put(AWSClientFactory.AWS_ENDPOINT_URL, "https://minio.mycompany.com");
-		envVars.put(AWSClientFactory.AWS_REGION, Regions.DEFAULT_REGION.getName());
-		final AmazonS3ClientBuilder amazonS3ClientBuilder = AWSClientFactory.configureBuilder(AmazonS3ClientBuilder.standard(), null, envVars);
-		Assert.assertEquals("https://minio.mycompany.com", amazonS3ClientBuilder.getEndpoint().getServiceEndpoint());
+		envVars.put(AWSClientFactory.AWS_REGION, "us-west-2");
+		envVars.put(AWSClientFactory.AWS_ACCESS_KEY_ID, "AKIAEXAMPLE");
+		envVars.put(AWSClientFactory.AWS_SECRET_ACCESS_KEY, "secret");
 
+		// v2 exposes the override on the built client's configuration rather than on the builder
+		final S3Client client = AWSClientFactory.create(S3Client.builder(), null, envVars);
+
+		Assert.assertEquals("https://minio.mycompany.com",
+				client.serviceClientConfiguration().endpointOverride().map(Object::toString).orElse(null));
 	}
 
 	@Test
@@ -446,6 +450,9 @@ public class WithAWSStepTest {
 			return this.resolveCredentials();
 		}
 
+		// AmazonWebServicesCredentials still extends the v1 provider interface, so these two have to
+		// exist even though nothing in the plugin calls them any more. They go when aws-credentials
+		// drops SDK v1.
 		@Override
 		public com.amazonaws.auth.AWSCredentials getCredentials() {
 			throw new UnsupportedOperationException("v1 path not used");

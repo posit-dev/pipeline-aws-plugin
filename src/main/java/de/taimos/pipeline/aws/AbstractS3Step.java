@@ -26,8 +26,6 @@ import java.io.Serializable;
 import org.jenkinsci.plugins.workflow.steps.Step;
 import org.kohsuke.stapler.DataBoundSetter;
 
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
 import software.amazon.awssdk.services.s3.S3BaseClientBuilder;
@@ -89,16 +87,6 @@ public abstract class AbstractS3Step extends Step {
 
 		public void setPayloadSigningEnabled(final boolean payloadSigningEnabled) {
 			this.payloadSigningEnabled = payloadSigningEnabled;
-		}
-
-		/**
-		 * Still v1, and the only remaining callers are s3Copy, s3Upload and s3Download - all of which
-		 * go through TransferManager, which needs the asynchronous client. Removed with them.
-		 */
-		protected AmazonS3ClientBuilder createAmazonS3ClientBuilder() {
-			return AmazonS3ClientBuilder.standard()
-					.withPathStyleAccessEnabled(this.isPathStyleAccessEnabled())
-					.withPayloadSigningEnabled(this.isPayloadSigningEnabled());
 		}
 
 		public S3ClientBuilder createS3ClientBuilder() {

@@ -22,11 +22,11 @@ class EBTestingUtils {
 
     static ElasticBeanstalkClient setupElasticBeanstalkClient() {
         ElasticBeanstalkClient client = Mockito.mock(ElasticBeanstalkClient.class);
-        AWSClientFactory.setV2FactoryDelegate((x) -> client);
+        AWSClientFactory.setFactoryDelegate((x) -> client);
         return client;
     }
 
     static void resetElasticBeanstalkClient() {
-        AWSClientFactory.setV2FactoryDelegate(null);
+        AWSClientFactory.setFactoryDelegate(null);
     }
 }

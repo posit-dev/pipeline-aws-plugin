@@ -20,18 +20,6 @@
  */
 package de.taimos.pipeline.aws;
 
-import com.amazonaws.ClientConfiguration;
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
-import com.amazonaws.auth.profile.ProfileCredentialsProvider;
-import com.amazonaws.client.builder.AwsClientBuilder;
-import com.amazonaws.client.builder.AwsSyncClientBuilder;
-import com.amazonaws.regions.Region;
-import com.amazonaws.regions.Regions;
-import com.amazonaws.retry.RetryPolicy;
 import hudson.EnvVars;
 import hudson.FilePath;
 import hudson.model.TaskListener;
@@ -40,6 +28,7 @@ import org.jenkinsci.plugins.workflow.steps.StepContext;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
 
+import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
@@ -78,136 +67,10 @@ public class AWSClientFactory implements Serializable {
 	static final String AWS_SDK_RETRIES = "AWS_SDK_RETRIES";
 	static final String AWS_PIPELINE_STEPS_FROM_NODE = "AWS_PIPELINE_STEPS_FROM_NODE";
 	private static AWSClientFactoryDelegate factoryDelegate;
-	private static AWSClientFactoryV2Delegate v2FactoryDelegate;
 
 
 	private AWSClientFactory() {
 		//
-	}
-
-	public static <B extends AwsSyncClientBuilder<?, T>, T> T create(B clientBuilder, StepContext context) {
-		if (factoryDelegate != null) {
-			return (T) factoryDelegate.create(clientBuilder);
-		}
-		try {
-			return configureBuilder(clientBuilder, context, context.get(EnvVars.class)).build();
-		} catch (Exception e) {
-			throw new IllegalArgumentException(e);
-		}
-	}
-
-	public static <B extends AwsSyncClientBuilder<?, T>, T> T create(B clientBuilder, StepContext context, EnvVars vars) {
-		if (factoryDelegate != null) {
-			return (T) factoryDelegate.create(clientBuilder);
-		}
-		return configureBuilder(clientBuilder, context, vars).build();
-	}
-
-	public static <B extends AwsSyncClientBuilder<?, T>, T> T create(B clientBuilder, EnvVars vars) {
-		return configureBuilder(clientBuilder, null, vars).build();
-	}
-
-	public static <B extends AwsSyncClientBuilder<?, ?>> B configureBuilder(final B clientBuilder, StepContext context, final EnvVars vars) {
-		if (clientBuilder == null) {
-			throw new IllegalArgumentException("ClientBuilder must not be null");
-		}
-		if (StringUtils.isNotBlank(vars.get(AWS_ENDPOINT_URL))) {
-			clientBuilder.setEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(vars.get(AWS_ENDPOINT_URL), vars.get(AWS_REGION)));
-		} else {
-			clientBuilder.setRegion(AWSClientFactory.getRegion(vars).getName());
-		}
-
-		clientBuilder.setCredentials(AWSClientFactory.getCredentials(vars, context));
-
-		clientBuilder.setClientConfiguration(AWSClientFactory.getClientConfiguration(vars));
-		return clientBuilder;
-	}
-
-	private static ClientConfiguration getClientConfiguration(EnvVars vars) {
-		ClientConfiguration clientConfiguration = new ClientConfiguration();
-
-		// The default SDK max retry is 3, increasing this to be more resilient to upstream errors
-		Integer retries = Integer.valueOf(vars.get(AWS_SDK_RETRIES, "10"));
-		clientConfiguration.setRetryPolicy(new RetryPolicy(null, null, retries, false));
-
-		// The default SDK socket timeout is 50000, use as deafult and allow to override via environment variable
-		Integer socketTimeout = Integer.valueOf(vars.get(AWS_SDK_SOCKET_TIMEOUT, "50000"));
-		clientConfiguration.setSocketTimeout(socketTimeout);
-
-		ProxyConfiguration.configure(vars, clientConfiguration);
-		return clientConfiguration;
-	}
-
-	private static AWSCredentialsProvider getCredentials(EnvVars vars, StepContext context) {
-		AWSCredentialsProvider provider = handleStaticCredentials(vars);
-		if (provider != null) {
-			return provider;
-		}
-
-		provider = handleProfile(vars);
-		if (provider != null) {
-			return provider;
-		}
-
-		if (context != null) {
-			if (PluginImpl.getInstance().isEnableCredentialsFromNode() || Boolean.valueOf(vars.get(AWS_PIPELINE_STEPS_FROM_NODE))) {
-				try {
-					return AWSClientFactory.getCredentialsFromNode(context, vars);
-				} catch (Exception e) {
-					throw new RuntimeException("Unable to retrieve credentials from node.");
-				}
-			}
-		}
-
-		return new DefaultAWSCredentialsProviderChain();
-	}
-
-	private static AWSCredentialsProvider getCredentialsFromNode(StepContext context, EnvVars envVars) throws IOException, InterruptedException {
-		FilePath ws = context.get(FilePath.class);
-		TaskListener listener = context.get(TaskListener.class);
-		SerializableAWSCredentialsProvider serializableAWSCredentialsProvider = ws.act(new AWSCredentialsProviderCallable(listener));
-		return serializableAWSCredentialsProvider;
-	}
-
-	private static AWSCredentialsProvider handleProfile(EnvVars vars) {
-		String profile = vars.get(AWS_PROFILE, vars.get(AWS_DEFAULT_PROFILE));
-		if (profile != null) {
-			return new ProfileCredentialsProvider(profile);
-		}
-		return null;
-	}
-
-	private static AWSCredentialsProvider handleStaticCredentials(EnvVars vars) {
-		String accessKey = vars.get(AWS_ACCESS_KEY_ID);
-		String secretAccessKey = vars.get(AWS_SECRET_ACCESS_KEY);
-		if (accessKey != null && secretAccessKey != null) {
-			String sessionToken = vars.get(AWS_SESSION_TOKEN);
-			if (sessionToken != null) {
-				return new AWSStaticCredentialsProvider(new BasicSessionCredentials(accessKey, secretAccessKey, sessionToken));
-			}
-			return new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, secretAccessKey));
-		}
-		return null;
-	}
-
-	private static Region getRegion(EnvVars vars) {
-		if (vars.get(AWS_DEFAULT_REGION) != null) {
-			return Region.getRegion(Regions.fromName(vars.get(AWS_DEFAULT_REGION)));
-		}
-		if (vars.get(AWS_REGION) != null) {
-			return Region.getRegion(Regions.fromName(vars.get(AWS_REGION)));
-		}
-		if (System.getenv(AWS_DEFAULT_REGION) != null) {
-			return Region.getRegion(Regions.fromName(System.getenv(AWS_DEFAULT_REGION)));
-		}
-		if (System.getenv(AWS_REGION) != null) {
-			return Region.getRegion(Regions.fromName(System.getenv(AWS_REGION)));
-		}
-		Region currentRegion = Regions.getCurrentRegion();
-		if (currentRegion != null) {
-			return currentRegion;
-		}
-		return Region.getRegion(Regions.DEFAULT_REGION);
 	}
 
 	private static final long serialVersionUID = 1L;
@@ -217,21 +80,10 @@ public class AWSClientFactory implements Serializable {
 		AWSClientFactory.factoryDelegate = factoryDelegate;
 	}
 
-	@Restricted(NoExternalUse.class)
-	public static void setV2FactoryDelegate(AWSClientFactoryV2Delegate v2FactoryDelegate) {
-		AWSClientFactory.v2FactoryDelegate = v2FactoryDelegate;
-	}
-
-	// ---------------------------------------------------------------------------------------------
-	// AWS SDK v2. These overloads sit beside the v1 ones above while services are migrated one at a
-	// time; the v1 half is deleted once the last step has moved. They resolve by argument type: v1
-	// builders are AwsSyncClientBuilder, v2 builders are AwsClientBuilder, so there is no ambiguity.
-	// ---------------------------------------------------------------------------------------------
-
 	@SuppressWarnings("unchecked")
-	public static <B extends software.amazon.awssdk.awscore.client.builder.AwsClientBuilder<B, C>, C> C create(B clientBuilder, StepContext context) {
-		if (v2FactoryDelegate != null) {
-			return (C) v2FactoryDelegate.create(clientBuilder);
+	public static <B extends AwsClientBuilder<B, C>, C> C create(B clientBuilder, StepContext context) {
+		if (factoryDelegate != null) {
+			return (C) factoryDelegate.create(clientBuilder);
 		}
 		try {
 			return configureV2Builder(clientBuilder, context, context.get(EnvVars.class)).build();
@@ -241,22 +93,22 @@ public class AWSClientFactory implements Serializable {
 	}
 
 	@SuppressWarnings("unchecked")
-	public static <B extends software.amazon.awssdk.awscore.client.builder.AwsClientBuilder<B, C>, C> C create(B clientBuilder, StepContext context, EnvVars vars) {
-		if (v2FactoryDelegate != null) {
-			return (C) v2FactoryDelegate.create(clientBuilder);
+	public static <B extends AwsClientBuilder<B, C>, C> C create(B clientBuilder, StepContext context, EnvVars vars) {
+		if (factoryDelegate != null) {
+			return (C) factoryDelegate.create(clientBuilder);
 		}
 		return configureV2Builder(clientBuilder, context, vars).build();
 	}
 
 	@SuppressWarnings("unchecked")
-	public static <B extends software.amazon.awssdk.awscore.client.builder.AwsClientBuilder<B, C>, C> C create(B clientBuilder, EnvVars vars) {
-		if (v2FactoryDelegate != null) {
-			return (C) v2FactoryDelegate.create(clientBuilder);
+	public static <B extends AwsClientBuilder<B, C>, C> C create(B clientBuilder, EnvVars vars) {
+		if (factoryDelegate != null) {
+			return (C) factoryDelegate.create(clientBuilder);
 		}
 		return configureV2Builder(clientBuilder, null, vars).build();
 	}
 
-	public static <B extends software.amazon.awssdk.awscore.client.builder.AwsClientBuilder<B, C>, C> B configureV2Builder(final B clientBuilder, StepContext context, final EnvVars vars) {
+	public static <B extends AwsClientBuilder<B, C>, C> B configureV2Builder(final B clientBuilder, StepContext context, final EnvVars vars) {
 		if (clientBuilder == null) {
 			throw new IllegalArgumentException("ClientBuilder must not be null");
 		}

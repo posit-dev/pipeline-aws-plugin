@@ -58,7 +58,7 @@ public class ListAWSAccountsStepTests {
 	@Before
 	public void setupSdk() throws Exception {
 		this.organizations = Mockito.mock(OrganizationsClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.organizations);
+		AWSClientFactory.setFactoryDelegate((x) -> this.organizations);
 
 		// The paginator methods are defaults on the client interface, so a mock returns null for
 		// them. Handing back a real paginator over the mock keeps the assertions below meaningful:
@@ -72,7 +72,7 @@ public class ListAWSAccountsStepTests {
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	private static Account account(String id, String name) {

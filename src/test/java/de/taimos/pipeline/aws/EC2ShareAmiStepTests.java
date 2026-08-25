@@ -26,12 +26,12 @@ public class EC2ShareAmiStepTests {
 	@Before
 	public void setupSdk() throws Exception {
 		this.ec2 = Mockito.mock(Ec2Client.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.ec2);
+		AWSClientFactory.setFactoryDelegate((x) -> this.ec2);
 	}
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	@Test

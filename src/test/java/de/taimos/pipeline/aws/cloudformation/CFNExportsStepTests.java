@@ -25,7 +25,7 @@ public class CFNExportsStepTests {
 	@Before
 	public void setupSdk() throws Exception {
 		this.cloudFormation = Mockito.mock(CloudFormationClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.cloudFormation);
+		AWSClientFactory.setFactoryDelegate((x) -> this.cloudFormation);
 		// the step pages through exports; a real paginator over the mock keeps the listExports
 		// stubs below meaningful
 		Mockito.when(this.cloudFormation.listExportsPaginator(Mockito.any(ListExportsRequest.class)))
@@ -34,7 +34,7 @@ public class CFNExportsStepTests {
 
 	@After
 	public void tearDownSdk() {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	@Test

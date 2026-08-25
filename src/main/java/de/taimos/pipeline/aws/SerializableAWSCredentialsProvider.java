@@ -20,15 +20,11 @@
  */
 package de.taimos.pipeline.aws;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.auth.STSSessionCredentials;
-
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.identity.spi.AwsSessionCredentialsIdentity;
 
 import java.io.Serializable;
 
@@ -36,43 +32,25 @@ import java.io.Serializable;
  * Serialize credentials so that they can be passed back to master
  *
  */
-public class SerializableAWSCredentialsProvider implements AWSCredentialsProvider,
-		software.amazon.awssdk.auth.credentials.AwsCredentialsProvider, Serializable {
+public class SerializableAWSCredentialsProvider implements AwsCredentialsProvider, Serializable {
 	private String accessKey;
 	private String secretAccessKey;
 	private String sessionToken;
 
-	SerializableAWSCredentialsProvider(AWSCredentialsProvider credentialsProvider) {
-		AWSCredentials credentials = credentialsProvider.getCredentials();
-		this.accessKey = credentials.getAWSAccessKeyId();
-		this.secretAccessKey = credentials.getAWSSecretKey();
-		// A token may be required, so check class
-		if (credentials.getClass() == BasicSessionCredentials.class) {
-			BasicSessionCredentials castedCredentials = (BasicSessionCredentials) credentials;
-			this.sessionToken = castedCredentials.getSessionToken();
-		}
-		if (credentials.getClass() == STSSessionCredentials.class) {
-			STSSessionCredentials castedCredentials = (STSSessionCredentials) credentials;
-			this.sessionToken = castedCredentials.getSessionToken();
-		}
-	}
-
-	public AWSCredentials getCredentials() {
-		if (this.sessionToken != null) {
-			return new BasicSessionCredentials(this.accessKey, this.secretAccessKey, this.sessionToken);
-		}
-		return new BasicAWSCredentials(this.accessKey, this.secretAccessKey);
-	}
-
-	public void refresh() {}
-
 	/**
-	 * The SDK v2 half of this provider. Implementing both interfaces lets credentials resolved on an
-	 * agent be handed to either SDK while the migration is in progress; the v1 half goes away with
-	 * the v1 dependencies.
-	 *
-	 * v2 collapses v1's BasicSessionCredentials and STSSessionCredentials into AwsSessionCredentials.
+	 * v1 tested getClass() against BasicSessionCredentials and STSSessionCredentials separately. v2
+	 * collapses both into AwsSessionCredentials, and the test is against the session-credentials
+	 * interface so that a provider returning its own implementation keeps its token.
 	 */
+	SerializableAWSCredentialsProvider(AwsCredentialsProvider credentialsProvider) {
+		AwsCredentials credentials = credentialsProvider.resolveCredentials();
+		this.accessKey = credentials.accessKeyId();
+		this.secretAccessKey = credentials.secretAccessKey();
+		if (credentials instanceof AwsSessionCredentialsIdentity) {
+			this.sessionToken = ((AwsSessionCredentialsIdentity) credentials).sessionToken();
+		}
+	}
+
 	@Override
 	public AwsCredentials resolveCredentials() {
 		if (this.sessionToken != null) {

@@ -28,12 +28,12 @@ public class ECRSetRepositoryPolicyStepTests {
 	@Before
 	public void setupSdk() throws Exception {
 		this.ecr = Mockito.mock(EcrClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.ecr);
+		AWSClientFactory.setFactoryDelegate((x) -> this.ecr);
 	}
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	@Test

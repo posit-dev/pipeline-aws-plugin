@@ -47,12 +47,12 @@ public class DeployAPIStepTests {
 		this.apiGateway = Mockito.mock(ApiGatewayClient.class);
 		Mockito.when(this.apiGateway.createDeployment(Mockito.any(CreateDeploymentRequest.class)))
 				.thenReturn(CreateDeploymentResponse.builder().id("dep-1").build());
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.apiGateway);
+		AWSClientFactory.setFactoryDelegate((x) -> this.apiGateway);
 	}
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	private CreateDeploymentRequest runAndCapture(String jobName, String args) throws Exception {

@@ -51,12 +51,12 @@ public class SNSPublishStepIntegrationTest {
 		this.sns = Mockito.mock(SnsClient.class);
 		Mockito.when(this.sns.publish(Mockito.any(PublishRequest.class)))
 				.thenReturn(PublishResponse.builder().messageId("mid-1").build());
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.sns);
+		AWSClientFactory.setFactoryDelegate((x) -> this.sns);
 	}
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	@Test

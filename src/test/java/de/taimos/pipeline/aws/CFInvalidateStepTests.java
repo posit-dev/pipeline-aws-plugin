@@ -69,12 +69,12 @@ public class CFInvalidateStepTests {
 						.build());
 		Mockito.when(this.cloudFront.waiter())
 				.thenAnswer(invocation -> CloudFrontWaiter.builder().client(this.cloudFront).build());
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.cloudFront);
+		AWSClientFactory.setFactoryDelegate((x) -> this.cloudFront);
 	}
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	private WorkflowRun run(String jobName, String args) throws Exception {

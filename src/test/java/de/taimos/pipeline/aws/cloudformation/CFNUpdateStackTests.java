@@ -28,7 +28,7 @@ public class CFNUpdateStackTests {
 	public void setupSdk() throws Exception {
 		this.stack = Mockito.mock(CloudFormationStack.class);
 		this.cloudFormation = Mockito.mock(CloudFormationClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.cloudFormation);
+		AWSClientFactory.setFactoryDelegate((x) -> this.cloudFormation);
 		AWSUtilFactory.setStackSupplier(s -> {
 			assertEquals("foo", s);
 			return stack;
@@ -37,7 +37,7 @@ public class CFNUpdateStackTests {
 
 	@After
 	public void tearDownSdk() {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 		AWSUtilFactory.setStackSupplier(null);
 	}
 

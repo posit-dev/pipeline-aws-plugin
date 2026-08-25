@@ -62,12 +62,12 @@ public class CreateDeployStepTests {
 				.thenReturn(GetDeploymentGroupResponse.builder()
 						.deploymentGroupInfo(DeploymentGroupInfo.builder().computePlatform("Server").build())
 						.build());
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.codeDeploy);
+		AWSClientFactory.setFactoryDelegate((x) -> this.codeDeploy);
 	}
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	private WorkflowRun run(String jobName, String args, Result expected) throws Exception {

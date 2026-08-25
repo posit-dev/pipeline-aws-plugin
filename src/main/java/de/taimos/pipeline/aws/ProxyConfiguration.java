@@ -24,8 +24,6 @@ package de.taimos.pipeline.aws;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.amazonaws.ClientConfiguration;
-import com.amazonaws.Protocol;
 import com.google.common.base.Joiner;
 
 import hudson.EnvVars;
@@ -54,76 +52,8 @@ class ProxyConfiguration {
 		// hidden constructor
 	}
 
-	static void configure(EnvVars vars, ClientConfiguration config) {
-		useJenkinsProxy(config);
-
-		if (config.getProtocol() == Protocol.HTTP) {
-			configureHTTP(vars, config);
-		} else {
-			configureHTTPS(vars, config);
-		}
-		configureNonProxyHosts(vars, config);
-	}
-
-	private static void useJenkinsProxy(ClientConfiguration config) {
-		if (Jenkins.getInstance() != null) {
-			hudson.ProxyConfiguration proxyConfiguration = Jenkins.getInstance().proxy;
-			if (proxyConfiguration != null) {
-				config.setProxyHost(proxyConfiguration.name);
-				config.setProxyPort(proxyConfiguration.port);
-				config.setProxyUsername(proxyConfiguration.getUserName());
-				config.setProxyPassword(proxyConfiguration.getPassword());
-
-				if (proxyConfiguration.getNoProxyHost() != null) {
-					String[] noProxyParts = proxyConfiguration.getNoProxyHost().split("[ \t\n,|]+");
-					config.setNonProxyHosts(Joiner.on('|').join(noProxyParts));
-				}
-			}
-		}
-	}
-
-	private static void configureNonProxyHosts(EnvVars vars, ClientConfiguration config) {
-		String noProxy = vars.get(NO_PROXY, vars.get(NO_PROXY_LC));
-		if (noProxy != null) {
-			config.setNonProxyHosts(Joiner.on('|').join(noProxy.split(",")));
-		}
-	}
-
-	private static void configureHTTP(EnvVars vars, ClientConfiguration config) {
-		String env = vars.get(HTTP_PROXY, vars.get(HTTP_PROXY_LC));
-		if (env != null) {
-			configureProxy(config, env, HTTP_PORT);
-		}
-	}
-
-	private static void configureHTTPS(EnvVars vars, ClientConfiguration config) {
-		String env = vars.get(HTTPS_PROXY, vars.get(HTTPS_PROXY_LC));
-		if (env != null) {
-			configureProxy(config, env, HTTPS_PORT);
-		}
-	}
-
-	private static void configureProxy(ClientConfiguration config, String env, int defaultPort) {
-		Pattern pattern = Pattern.compile(PROXY_PATTERN);
-		Matcher matcher = pattern.matcher(env);
-		if (matcher.matches()) {
-			if (matcher.group(3) != null) {
-				config.setProxyUsername(matcher.group(3));
-			}
-			if (matcher.group(5) != null) {
-				config.setProxyPassword(matcher.group(5));
-			}
-			config.setProxyHost(matcher.group(6));
-			if (matcher.group(8) != null) {
-				config.setProxyPort(Integer.parseInt(matcher.group(8)));
-			} else {
-				config.setProxyPort(defaultPort);
-			}
-		}
-	}
-
 	/**
-	 * Builds the AWS SDK v2 equivalent of {@link #configure(EnvVars, ClientConfiguration)} for the
+	 * Builds the proxy configuration for the
 	 * Apache (synchronous) HTTP client.
 	 *
 	 * The v1 path branches on {@code ClientConfiguration.getProtocol()}, but nothing in this plugin

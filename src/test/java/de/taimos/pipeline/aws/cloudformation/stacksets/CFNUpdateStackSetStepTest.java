@@ -46,7 +46,7 @@ public class CFNUpdateStackSetStepTest {
 	public void setupSdk() throws Exception {
 		stackSet = Mockito.mock(CloudFormationStackSet.class);
 		CloudFormationClient cloudFormation = Mockito.mock(CloudFormationClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> cloudFormation);
+		AWSClientFactory.setFactoryDelegate((x) -> cloudFormation);
 		AWSUtilFactory.setStackSetSupplier(s -> {
 			assertEquals("foo", s);
 			return stackSet;
@@ -55,7 +55,7 @@ public class CFNUpdateStackSetStepTest {
 
 	@After
 	public void tearDownSdk() {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 		AWSUtilFactory.setStackSetSupplier(null);
 	}
 

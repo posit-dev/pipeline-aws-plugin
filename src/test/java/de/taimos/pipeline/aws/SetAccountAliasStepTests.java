@@ -51,12 +51,12 @@ public class SetAccountAliasStepTests {
 	@Before
 	public void setupSdk() throws Exception {
 		this.iam = Mockito.mock(IamClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.iam);
+		AWSClientFactory.setFactoryDelegate((x) -> this.iam);
 	}
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	private void runStep(String jobName) throws Exception {

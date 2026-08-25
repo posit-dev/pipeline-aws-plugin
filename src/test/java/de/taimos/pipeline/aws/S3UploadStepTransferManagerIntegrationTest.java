@@ -69,13 +69,13 @@ public class S3UploadStepTransferManagerIntegrationTest {
 	public void setupSdk() throws Exception {
 		transferManager = Mockito.mock(S3TransferManager.class);
 		asyncClient = Mockito.mock(S3AsyncClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> asyncClient);
+		AWSClientFactory.setFactoryDelegate((x) -> asyncClient);
 		AWSUtilFactory.setV2TransferManagerSupplier(() -> transferManager);
 	}
 
 	@org.junit.After
 	public void tearDownSdk() {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 		AWSUtilFactory.setV2TransferManagerSupplier(null);
 	}
 

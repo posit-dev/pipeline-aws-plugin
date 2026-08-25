@@ -70,13 +70,13 @@ public class S3DownloadStepTests {
 		this.transferManager = Mockito.mock(S3TransferManager.class);
 		AWSUtilFactory.setV2TransferManagerSupplier(() -> this.transferManager);
 		this.asyncClient = Mockito.mock(S3AsyncClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.asyncClient);
+		AWSClientFactory.setFactoryDelegate((x) -> this.asyncClient);
 	}
 
 	@After
 	public void tearDownSdk() {
 		AWSUtilFactory.setV2TransferManagerSupplier(null);
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	private void stubFileDownload() {

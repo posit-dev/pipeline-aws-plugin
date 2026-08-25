@@ -72,13 +72,13 @@ public class S3CopyStepTests {
 		AWSUtilFactory.setV2TransferManagerSupplier(() -> this.transferManager);
 		// the step still builds an async client before handing it to the manager
 		this.asyncClient = Mockito.mock(S3AsyncClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.asyncClient);
+		AWSClientFactory.setFactoryDelegate((x) -> this.asyncClient);
 	}
 
 	@After
 	public void tearDownSdk() {
 		AWSUtilFactory.setV2TransferManagerSupplier(null);
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	private CopyObjectRequest runAndCapture(String jobName, String args) throws Exception {

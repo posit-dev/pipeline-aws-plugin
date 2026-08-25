@@ -58,14 +58,14 @@ public class S3FindFilesStepTests {
 	@Before
 	public void setupSdk() {
 		this.s3Client = Mockito.mock(S3Client.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.s3Client);
+		AWSClientFactory.setFactoryDelegate((x) -> this.s3Client);
 		Mockito.when(this.s3Client.listObjectsV2Paginator(Mockito.any(ListObjectsV2Request.class)))
 				.thenAnswer(invocation -> new ListObjectsV2Iterable(this.s3Client, invocation.getArgument(0)));
 	}
 
 	@After
 	public void tearDownSdk() {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	private static S3Object object(String key, long size) {

@@ -29,12 +29,12 @@ public class CFNValidateStepTests {
 	@Before
 	public void setupSdk() throws Exception {
 		this.cloudFormation = Mockito.mock(CloudFormationClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> this.cloudFormation);
+		AWSClientFactory.setFactoryDelegate((x) -> this.cloudFormation);
 	}
 
 	@After
 	public void tearDownSdk() {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	@Test

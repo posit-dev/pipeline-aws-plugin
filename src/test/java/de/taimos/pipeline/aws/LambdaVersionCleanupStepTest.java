@@ -39,7 +39,7 @@ public class LambdaVersionCleanupStepTest {
 	public void setupSdk() throws Exception {
 		this.awsLambda = Mockito.mock(LambdaClient.class);
 		this.cloudformation = Mockito.mock(CloudFormationClient.class);
-		AWSClientFactory.setV2FactoryDelegate((x) -> {
+		AWSClientFactory.setFactoryDelegate((x) -> {
 			if (x instanceof LambdaClientBuilder) {
 				return this.awsLambda;
 			} else {
@@ -57,7 +57,7 @@ public class LambdaVersionCleanupStepTest {
 
 	@After
 	public void tearDownSdk() throws Exception {
-		AWSClientFactory.setV2FactoryDelegate(null);
+		AWSClientFactory.setFactoryDelegate(null);
 	}
 
 	private static String recently() {

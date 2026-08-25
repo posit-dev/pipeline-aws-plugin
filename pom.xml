@@ -211,10 +211,9 @@
         <!--
             aws-credentials depends on the AWS SDK v1 plugins as well as the v2 ones, because its
             AmazonWebServicesCredentials implements both SDKs' provider interfaces. That is now the
-            only thing putting SDK v1 on this plugin's classpath - and it is still a compile
-            dependency, not just a runtime one: the S3 steps, withAWS/awsIdentity's STS calls,
-            SerializableAWSCredentialsProvider, AWSCredentialsProviderCallable and
-            AWSClientFactoryDelegate all still reference com.amazonaws types. It also brings two
+            only thing putting SDK v1 on this plugin's classpath: nothing in src/main references
+            com.amazonaws any more, and the one place src/test does is a stub implementing that
+            interface, which cannot compile without the v1 method it declares. It also brings two
             versions of com.sun.xml.bind:jaxb-impl into range of RequireUpperBoundDeps: 2.3.9
             through io.jenkins.plugins:jaxb, and 4.0.9 through io.jenkins.plugins:jakarta-xml-bind-api.
 
@@ -222,11 +221,9 @@
             needs it at runtime. Excluding the plugin instead compiles and passes the functional
             tests while leaving the plugin unloadable, which InjectedTest catches.
 
-            This exclusion can only go once the remaining v1 steps above are migrated *and*
-            aws-credentials drops SDK v1 (jenkinsci/aws-credentials-plugin#284, open since 2025 and
-            deliberately held back for plugins that have not migrated). Dropping it on the strength
-            of #284 alone would break the build with "package com.amazonaws.services.s3 does not
-            exist" rather than removing something unused.
+            This exclusion goes when aws-credentials drops SDK v1 (jenkinsci/aws-credentials-plugin#284,
+            open since 2025 and deliberately held back for plugins that have not migrated). This
+            plugin migrating is one fewer reason to hold it back.
         -->
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
