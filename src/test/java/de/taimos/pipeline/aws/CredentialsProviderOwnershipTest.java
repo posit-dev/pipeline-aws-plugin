@@ -58,24 +58,42 @@ public class CredentialsProviderOwnershipTest {
 		}
 	}
 
-	/**
+	/*
 	 * The SDK behaviour the rest of this rests on: clients and presigners do close a caller-supplied
-	 * provider. If a future SDK stops doing so, these fail and the wrapper below becomes unnecessary
-	 * rather than silently pointless.
+	 * provider. If a future SDK stops doing so, these fail and the wrapper becomes unnecessary rather
+	 * than silently pointless - so they are separate methods, to report which of the three changed
+	 * rather than stopping at the first.
+	 */
+
+	@Test
+	public void theSyncClientClosesACallerSuppliedProvider() {
+		ClosableProvider provider = new ClosableProvider();
+
+		S3Client.builder().region(Region.US_WEST_2).credentialsProvider(provider).build().close();
+
+		assertThat(provider.closed).isTrue();
+	}
+
+	@Test
+	public void theAsyncClientClosesACallerSuppliedProvider() {
+		ClosableProvider provider = new ClosableProvider();
+
+		S3AsyncClient.builder().region(Region.US_WEST_2).credentialsProvider(provider).build().close();
+
+		assertThat(provider.closed).isTrue();
+	}
+
+	/**
+	 * Listed separately for more than symmetry: SdkPresigner's resource-ownership contract is the one
+	 * that would most plausibly diverge from a service client's.
 	 */
 	@Test
-	public void clientsCloseACallerSuppliedProvider() {
-		ClosableProvider forSyncClient = new ClosableProvider();
-		S3Client.builder().region(Region.US_WEST_2).credentialsProvider(forSyncClient).build().close();
-		assertThat(forSyncClient.closed).isTrue();
+	public void thePresignerClosesACallerSuppliedProvider() {
+		ClosableProvider provider = new ClosableProvider();
 
-		ClosableProvider forAsyncClient = new ClosableProvider();
-		S3AsyncClient.builder().region(Region.US_WEST_2).credentialsProvider(forAsyncClient).build().close();
-		assertThat(forAsyncClient.closed).isTrue();
+		S3Presigner.builder().region(Region.US_WEST_2).credentialsProvider(provider).build().close();
 
-		ClosableProvider forPresigner = new ClosableProvider();
-		S3Presigner.builder().region(Region.US_WEST_2).credentialsProvider(forPresigner).build().close();
-		assertThat(forPresigner.closed).isTrue();
+		assertThat(provider.closed).isTrue();
 	}
 
 	@Test
@@ -89,10 +107,10 @@ public class CredentialsProviderOwnershipTest {
 	 */
 	@Test
 	public void theFactoryNeverHandsAClientTheCloseableSharedProvider() {
-		EnvVars vars = new EnvVars();
-		vars.put(AWSClientFactory.AWS_REGION, "us-west-2");
-
-		AwsCredentialsProvider provider = AWSClientFactory.getV2Credentials(vars, null);
+		// empty on purpose: the default branch is selected by the *absence* of AWS_ACCESS_KEY_ID,
+		// AWS_PROFILE and AWS_PIPELINE_STEPS_FROM_NODE. Region is resolved elsewhere and is not read
+		// here at all, so setting one would only suggest it mattered.
+		AwsCredentialsProvider provider = AWSClientFactory.getV2Credentials(new EnvVars(), null);
 
 		// not resolving here: with no credentials in the environment the chain throws, and what this
 		// pins is ownership, not resolution
