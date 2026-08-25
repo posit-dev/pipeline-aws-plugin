@@ -78,11 +78,21 @@ What you do need to check before upgrading:
   so only scripts running outside the sandbox are affected.
 * **`cfnValidate`** no longer returns the undocumented `sdkResponseMetadata` and `sdkHttpMetadata`
   keys. The documented fields are unchanged.
-* **Catching AWS exceptions by type around an agent-side `s3Upload`/`s3Download` no longer works** -
-  they now arrive as `hudson.remoting.ProxyException`. Catch `Exception` and inspect the message.
+* **Catching AWS exceptions by type no longer works.** Errors from every migrated step now surface
+  as `software.amazon.awssdk...` exceptions rather than `com.amazonaws...AmazonServiceException`, and
+  around an agent-side `s3Upload`/`s3Download` they arrive as `hudson.remoting.ProxyException`. The
+  v1 classes are still on the classpath, so a `catch (com.amazonaws...)` still compiles and simply
+  stops matching - the build fails where it used to recover. Catch `Exception` and inspect the
+  message.
+* **`withAWS(credentials: ...)` and `withAWS(samlAssertion: ...)` now clear any inherited
+  `AWS_SESSION_TOKEN`** for the duration of the block, so that a credential carrying no token cannot
+  be paired with a stale one. An `AWS_SESSION_TOKEN` you set deliberately - from `withEnv`, a global
+  environment variable, or a credentials binding - is dropped too, because the step cannot tell the
+  two apart. Supply it through `role`/`federatedUserId`, or set it inside the block rather than
+  around it. The drop is logged.
 
-The changelog below lists these and the smaller behaviour changes - including several long-standing
-bugs fixed along the way - in full.
+The `current master` section of the changelog below - this release, until it is tagged - lists these
+and the smaller behaviour changes, including several long-standing bugs fixed along the way, in full.
 
 Note that the AWS SDK v1 jar is still on the runtime classpath, because `aws-credentials` continues
 to declare it ([aws-credentials-plugin#284](https://github.com/jenkinsci/aws-credentials-plugin/pull/284)).
