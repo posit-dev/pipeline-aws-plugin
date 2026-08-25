@@ -38,6 +38,7 @@ import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Publisher;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 import software.amazon.awssdk.transfer.s3.model.CompletedDirectoryDownload;
+import software.amazon.awssdk.transfer.s3.model.DownloadDirectoryRequest;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -143,15 +144,28 @@ public class S3DownloadLayoutTest {
 
 	/**
 	 * A zero-byte delimiter-terminated key is the folder marker the S3 console creates, and the SDK's
-	 * default filter already excludes it. Pinned so that the step's own filter can be recognised as a
-	 * widening of that rather than the thing handling this case.
+	 * default filter already excludes it - which is why the step's own filter is a widening rather
+	 * than the thing that keeps console folders from failing builds.
+	 *
+	 * This deliberately issues a request *without* the step's filter. Going through
+	 * downloadDirectoryRequest would prove nothing here: that filter rejects any key ending in the
+	 * delimiter before the default is consulted, so the test would pass whether or not the SDK
+	 * excluded zero-byte markers - which is the claim being made.
 	 */
 	@Test
-	public void zeroByteFolderMarkersAreSkipped() {
+	public void theSdkDefaultAlreadySkipsZeroByteFolderMarkers() {
 		File destination = this.folder.getRoot();
+		Map<String, Long> keys = sized("a/b/", 0L, "a/b/x.txt", 4L);
 
-		CompletedDirectoryDownload completed = this.download("a/b/",
-				sized("a/b/", 0L, "a/b/x.txt", 4L), destination);
+		CompletedDirectoryDownload completed;
+		try (S3AsyncClient client = stubClientReturning(keys);
+				S3TransferManager mgr = S3TransferManager.builder().s3Client(client).build()) {
+			completed = mgr.downloadDirectory(DownloadDirectoryRequest.builder()
+					.bucket("my-bucket")
+					.destination(S3DownloadStep.destinationFor(destination, "a/b/"))
+					.listObjectsV2RequestTransformer(l -> l.prefix("a/b/"))
+					.build()).completionFuture().join();
+		}
 
 		assertThat(completed.failedTransfers()).isEmpty();
 		assertThat(new File(destination, "a/b/x.txt")).exists();
@@ -173,10 +187,14 @@ public class S3DownloadLayoutTest {
 		assertThat(new File(destination, "a/b/x.txt")).exists();
 	}
 
-	private static Map<String, Long> sized(String k1, long s1, String k2, long s2) {
+	/**
+	 * Alternating key and size, so a case needing a third object does not need a new overload.
+	 */
+	private static Map<String, Long> sized(Object... keysAndSizes) {
 		Map<String, Long> keys = new LinkedHashMap<>();
-		keys.put(k1, s1);
-		keys.put(k2, s2);
+		for (int i = 0; i < keysAndSizes.length; i += 2) {
+			keys.put((String) keysAndSizes[i], (Long) keysAndSizes[i + 1]);
+		}
 		return keys;
 	}
 }

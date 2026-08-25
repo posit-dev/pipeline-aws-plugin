@@ -35,11 +35,13 @@ import com.cloudbees.plugins.credentials.CredentialsStore;
 import com.cloudbees.plugins.credentials.SystemCredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.Domain;
-import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
-import software.amazon.awssdk.auth.credentials.AwsCredentials;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import com.cloudbees.plugins.credentials.impl.BaseStandardCredentials;
 import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl;
+
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.identity.spi.AwsSessionCredentialsIdentity;
 import hudson.EnvVars;
 import hudson.model.Result;
 import hudson.util.ListBoxModel;
@@ -431,6 +433,9 @@ public class WithAWSStepTest {
 
 		@Override
 		public AwsCredentials resolveCredentials() {
+			if ("third-party".equals(this.sessionToken)) {
+				return new ThirdPartySessionCredentials();
+			}
 			return this.sessionToken == null
 					? AwsBasicCredentials.create(this.accessKeyId, this.secretAccessKey)
 					: AwsSessionCredentials.create(this.accessKeyId, this.secretAccessKey, this.sessionToken);
@@ -461,10 +466,32 @@ public class WithAWSStepTest {
 		}
 	}
 
-	private String registerStub(String id, String sessionToken) throws Exception {
+	private void registerStub(String id, String sessionToken) throws Exception {
 		SystemCredentialsProvider.getInstance().getCredentials().add(new StubCredentials(id, "key", "secret", sessionToken));
 		SystemCredentialsProvider.getInstance().save();
-		return id;
+	}
+
+	/**
+	 * A session credential that is not the SDK's own AwsSessionCredentials. AmazonWebServicesCredentials
+	 * is an extension point, so an implementation outside aws-credentials can return its own type;
+	 * without this, narrowing the check back to the concrete class would leave the suite green while
+	 * silently dropping such a token.
+	 */
+	public static class ThirdPartySessionCredentials implements AwsCredentials, AwsSessionCredentialsIdentity {
+		@Override
+		public String accessKeyId() {
+			return "key";
+		}
+
+		@Override
+		public String secretAccessKey() {
+			return "secret";
+		}
+
+		@Override
+		public String sessionToken() {
+			return "third-party-token";
+		}
 	}
 
 	private WorkflowRun runEchoingSessionToken(String jobName, String credentialsId) throws Exception {
@@ -485,20 +512,58 @@ public class WithAWSStepTest {
 	 */
 	@Test
 	public void sessionCredentialsExportTheirTokenWithoutMfa() throws Exception {
-		String id = this.registerStub("stub-session-creds", "the-session-token");
+		this.registerStub("stub-session-creds", "the-session-token");
 
-		WorkflowRun run = this.runEchoingSessionToken("testSessionToken", id);
+		WorkflowRun run = this.runEchoingSessionToken("testSessionToken", "stub-session-creds");
 
 		jenkinsRule.assertLogContains("token=[the-session-token]", run);
 	}
 
+	/**
+	 * Nesting static keys inside an assumed role must not leave the outer block's token in place: the
+	 * inner block would otherwise sign with the new key and secret and the old token, which AWS
+	 * rejects.
+	 */
 	@Test
-	public void basicCredentialsExportNoToken() throws Exception {
-		String id = this.registerStub("stub-basic-creds", null);
+	public void basicCredentialsClearAnInheritedSessionToken() throws Exception {
+		this.registerStub("stub-basic-creds-nested", null);
 
-		WorkflowRun run = this.runEchoingSessionToken("testNoSessionToken", id);
+		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "testClearsInheritedToken");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  withEnv(['AWS_SESSION_TOKEN=inherited-token']) {\n"
+				+ "    withAWS (credentials: 'stub-basic-creds-nested') {\n"
+				+ "      echo \"token=[${env.AWS_SESSION_TOKEN}]\"\n"
+				+ "    }\n"
+				+ "  }\n"
+				+ "}\n", true)
+		);
+		WorkflowRun run = jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
 
 		jenkinsRule.assertLogContains("token=[null]", run);
 	}
 
+	@Test
+	public void basicCredentialsExportNoToken() throws Exception {
+		this.registerStub("stub-basic-creds", null);
+
+		WorkflowRun run = this.runEchoingSessionToken("testNoSessionToken", "stub-basic-creds");
+
+		jenkinsRule.assertLogContains("token=[null]", run);
+	}
+
+
+	/**
+	 * The reason the check is against AwsSessionCredentialsIdentity rather than the SDK's own
+	 * AwsSessionCredentials: a third-party AmazonWebServicesCredentials returning its own session
+	 * credential type must still have its token exported.
+	 */
+	@Test
+	public void aThirdPartySessionCredentialAlsoExportsItsToken() throws Exception {
+		this.registerStub("stub-third-party-creds", "third-party");
+
+		WorkflowRun run = this.runEchoingSessionToken("testThirdPartyToken", "stub-third-party-creds");
+
+		jenkinsRule.assertLogContains("token=[third-party-token]", run);
+	}
 }

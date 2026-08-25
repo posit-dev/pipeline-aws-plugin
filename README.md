@@ -1215,9 +1215,10 @@ ebWaitOnEnvironmentHealth(
   so a credential that resolved to a session credential without MFA was exported as a key and secret
   with no token - a pair that cannot sign. Pipelines relying on that partial credential set will now
   authenticate as the session was intended to.
-  Note one limitation, unchanged from v1: a credential that is *not* a session credential leaves any
-  inherited `AWS_SESSION_TOKEN` in place, so nesting `withAWS(credentials: 'static-keys')` inside
-  `withAWS(role: ...)` still signs with the outer block's token.
+* Fixed: `withAWS(credentials: ...)` with a credential that carries no session token now clears any
+  inherited `AWS_SESSION_TOKEN` for the block. Nesting `withAWS(credentials: 'static-keys')` inside
+  `withAWS(role: ...)` previously signed the inner block with the new key and secret and the outer
+  block's token, which AWS rejects.
 * `s3Download` of a directory keeps putting files where SDK v1 put them. SDK v2 resolves object keys
   relative to the listing prefix, so `s3Download(bucket: 'b', path: 'a/b/', file: 'out')` would have
   written `out/x.txt` where v1 wrote `out/a/b/x.txt` - a silent change, since the download itself

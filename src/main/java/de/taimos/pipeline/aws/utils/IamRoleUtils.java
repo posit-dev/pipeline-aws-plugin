@@ -28,8 +28,8 @@ import software.amazon.awssdk.regions.Region;
 public final class IamRoleUtils {
 
 	private static final Pattern IAM_ROLE_PATTERN = Pattern.compile("arn:(aws|aws-cn|aws-us-gov):iam::[0-9]{12}:role/([\\w+=,.@/-]{1,512}/)?[\\w+=,.@-]{1,64}");
-	private static final String DEFAULT_PARTITION = "aws";
 	// source: http://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-limits.html
+	private static final String DEFAULT_PARTITION = "aws";
 
 	private IamRoleUtils() {
 		// hidden constructor

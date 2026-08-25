@@ -374,15 +374,17 @@ public class WithAWSStep extends Step {
 					// otherwise have its token dropped silently, leaving a pair that cannot sign.
 					if (awsCredentials instanceof AwsSessionCredentialsIdentity) {
 						localEnv.override(AWSClientFactory.AWS_SESSION_TOKEN, ((AwsSessionCredentialsIdentity) awsCredentials).sessionToken());
+					} else {
+						// A non-session credential has to clear any inherited token, or
+						// withAWS(credentials: 'static-keys') nested inside withAWS(role: ...) would sign
+						// with the new key and secret and the outer block's token, which AWS rejects.
+						//
+						// put, not override: EnvVars.override treats an empty value as "remove this key",
+						// so override here would drop the entry from the overlay and let the outer value
+						// show through unchanged. Carrying an empty value instead makes the expander's own
+						// overrideAll remove it from the body's environment, which is what is wanted.
+						localEnv.put(AWSClientFactory.AWS_SESSION_TOKEN, "");
 					}
-					// Known limitation, unchanged from v1: a non-session credential leaves any inherited
-					// AWS_SESSION_TOKEN in place, so withAWS(credentials: 'static-keys') nested inside
-					// withAWS(role: ...) signs with the new key and secret and the outer block's token,
-					// which AWS rejects. It cannot be fixed by dropping the variable from this overlay -
-					// the overlay only overrides, so the outer value still shows through - and masking
-					// it with an empty string would not help either, since handleV2StaticCredentials
-					// only tests for null. Fixing it properly means changing how the step exports its
-					// environment, which is out of scope here.
 
 					localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, awsCredentials.accessKeyId());
 					localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, awsCredentials.secretAccessKey());
