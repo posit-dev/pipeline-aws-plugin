@@ -300,6 +300,7 @@ public class WithAWSStepTest {
 		jenkinsRule.waitForCompletion(workflowRun);
 		jenkinsRule.assertBuildStatus(Result.FAILURE, workflowRun);
 		jenkinsRule.assertLogContains("Requesting assume role", workflowRun);
+		jenkinsRule.assertLogContains("Requesting assume role", workflowRun);
 		jenkinsRule.assertLogContains("Specified provider doesn't exist", workflowRun);
 	}
 
@@ -612,7 +613,7 @@ public class WithAWSStepTest {
 	 */
 	@Test
 	public void samlAssertionStillReachesStsWithAnInheritedToken() throws Exception {
-		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "testSamlClearsToken");
+		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "testSamlWithInheritedToken");
 		job.setDefinition(new CpsFlowDefinition(""
 				+ "node {\n"
 				+ "  withEnv(['AWS_SESSION_TOKEN=inherited-token']) {\n"
@@ -653,6 +654,9 @@ public class WithAWSStepTest {
 		WorkflowRun workflowRun = job.scheduleBuild2(0).get();
 		jenkinsRule.waitForCompletion(workflowRun);
 
+		// anchor first: without it the negative assertion also passes when the run never got as far as
+		// withCredentials - a mistyped credentials id would leave this green for the wrong reason
+		jenkinsRule.assertLogContains("Requesting assume role", workflowRun);
 		jenkinsRule.assertLogNotContains("Dropping the inherited AWS_SESSION_TOKEN", workflowRun);
 	}
 

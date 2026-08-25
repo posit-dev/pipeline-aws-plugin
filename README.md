@@ -1220,7 +1220,6 @@ ebWaitOnEnvironmentHealth(
   pair or an AWS credential. Nesting it inside `withAWS(role: ...)` previously signed the inner block
   with the new key and secret and the outer block's token, which AWS rejects.
   `withAWS(samlAssertion: ...)` clears it too.
-
   Note the flip side: an `AWS_SESSION_TOKEN` set deliberately out of band - from `withEnv`, a global
   environment variable, or a credentials binding - is no longer visible inside the block either,
   since the step cannot distinguish it from a stale one. The drop is logged, unless `role` or
