@@ -18,6 +18,7 @@ package de.taimos.pipeline.aws.utils;
 
 import java.util.Optional;
 
+import org.apache.commons.lang.StringUtils;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
 import software.amazon.awssdk.services.sts.model.AssumeRoleResponse;
@@ -33,10 +34,6 @@ public class AssumedRole {
 	private final Credentials credentials;
 	
 	private final AssumedRoleUser assumedRoleUser;
-
-	private static String emptyToNull(final String value) {
-		return value == null || value.isEmpty() ? null : value;
-	}
 
 	private AssumedRole(final Credentials credentials, final AssumedRoleUser assumedRoleUser) {
 		this.credentials = credentials;
@@ -74,17 +71,17 @@ public class AssumedRole {
 		}
 		
 		public AssumeRole withSessionName(final String sessionName) {
-			this.sessionName = emptyToNull(sessionName);
+			this.sessionName = StringUtils.isEmpty(sessionName) ? null : sessionName;
 			return this;
 		}
 		
 		public AssumeRole withExternalId(final String externalId) {
-			this.externalId = emptyToNull(externalId);
+			this.externalId = StringUtils.isEmpty(externalId) ? null : externalId;
 			return this;
 		}
 		
 		public AssumeRole withPolicy(final String policy) {
-			this.policy = emptyToNull(policy);
+			this.policy = StringUtils.isEmpty(policy) ? null : policy;
 			return this;
 		}
 		
@@ -94,7 +91,7 @@ public class AssumedRole {
 		}
 		
 		public AssumeRole withSamlAssertion(final String samlAssertion, final String principalArn) {
-			this.samlAssertion = emptyToNull(samlAssertion);
+			this.samlAssertion = StringUtils.isEmpty(samlAssertion) ? null : samlAssertion;
 			this.principalArn = principalArn;
 			return this;
 		}

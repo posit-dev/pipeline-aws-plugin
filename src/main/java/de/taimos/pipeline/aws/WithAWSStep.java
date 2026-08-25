@@ -37,19 +37,20 @@ import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
-import org.apache.commons.lang.StringUtils;
-import software.amazon.awssdk.auth.credentials.AwsCredentials;
-import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
-import software.amazon.awssdk.services.sts.StsClient;
-import software.amazon.awssdk.services.sts.model.Credentials;
-import software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest;
-import software.amazon.awssdk.services.sts.model.GetFederationTokenRequest;
-import software.amazon.awssdk.services.sts.model.GetFederationTokenResponse;
 import com.cloudbees.jenkins.plugins.awscredentials.AmazonWebServicesCredentials;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
+
+import org.apache.commons.lang.StringUtils;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.identity.spi.AwsSessionCredentialsIdentity;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.model.Credentials;
+import software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest;
+import software.amazon.awssdk.services.sts.model.GetFederationTokenRequest;
+import software.amazon.awssdk.services.sts.model.GetFederationTokenResponse;
 
 import de.taimos.pipeline.aws.utils.AssumedRole;
 import de.taimos.pipeline.aws.utils.AssumedRole.AssumeRole;
@@ -367,10 +368,21 @@ public class WithAWSStep extends Step {
 					// v1 cast to BasicSessionCredentials on the MFA branch only. v2 collapses v1's
 					// BasicSessionCredentials and STSSessionCredentials into AwsSessionCredentials, so
 					// this tests the type instead - which also covers a session token arriving on the
-					// non-MFA branch, where v1 would have dropped it.
-					if (awsCredentials instanceof AwsSessionCredentials) {
-						localEnv.override(AWSClientFactory.AWS_SESSION_TOKEN, ((AwsSessionCredentials) awsCredentials).sessionToken());
+					// non-MFA branch, where v1 would have dropped it. The test is against the interface
+					// rather than the built-in implementation, because AmazonWebServicesCredentials is
+					// an extension point and another implementation's session credential would
+					// otherwise have its token dropped silently, leaving a pair that cannot sign.
+					if (awsCredentials instanceof AwsSessionCredentialsIdentity) {
+						localEnv.override(AWSClientFactory.AWS_SESSION_TOKEN, ((AwsSessionCredentialsIdentity) awsCredentials).sessionToken());
 					}
+					// Known limitation, unchanged from v1: a non-session credential leaves any inherited
+					// AWS_SESSION_TOKEN in place, so withAWS(credentials: 'static-keys') nested inside
+					// withAWS(role: ...) signs with the new key and secret and the outer block's token,
+					// which AWS rejects. It cannot be fixed by dropping the variable from this overlay -
+					// the overlay only overrides, so the outer value still shows through - and masking
+					// it with an empty string would not help either, since handleV2StaticCredentials
+					// only tests for null. Fixing it properly means changing how the step exports its
+					// environment, which is out of scope here.
 
 					localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, awsCredentials.accessKeyId());
 					localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, awsCredentials.secretAccessKey());

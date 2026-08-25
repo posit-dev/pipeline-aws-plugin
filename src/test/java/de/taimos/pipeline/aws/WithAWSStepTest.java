@@ -35,6 +35,10 @@ import com.cloudbees.plugins.credentials.CredentialsStore;
 import com.cloudbees.plugins.credentials.SystemCredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.Domain;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import com.cloudbees.plugins.credentials.impl.BaseStandardCredentials;
 import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl;
 import hudson.EnvVars;
 import hudson.model.Result;
@@ -402,4 +406,99 @@ public class WithAWSStepTest {
 		}
 		return folderStore;
 	}
+
+	/**
+	 * A credential implementation whose resolveCredentials actually returns, so the session-token
+	 * branch is reachable. The existing folder-credential tests all use an AWSCredentialsImpl with a
+	 * placeholder role ARN, so resolveCredentials throws inside aws-credentials before returning -
+	 * which is what those tests assert on, and why nothing reached this code.
+	 */
+	public static class StubCredentials extends BaseStandardCredentials implements AmazonWebServicesCredentials {
+
+		private static final long serialVersionUID = 1L;
+		// stored as strings, not as an AwsCredentials: the credentials store persists this object and
+		// the SDK's credential types are not serializable
+		private final String accessKeyId;
+		private final String secretAccessKey;
+		private final String sessionToken;
+
+		StubCredentials(String id, String accessKeyId, String secretAccessKey, String sessionToken) {
+			super(CredentialsScope.GLOBAL, id, "stub");
+			this.accessKeyId = accessKeyId;
+			this.secretAccessKey = secretAccessKey;
+			this.sessionToken = sessionToken;
+		}
+
+		@Override
+		public AwsCredentials resolveCredentials() {
+			return this.sessionToken == null
+					? AwsBasicCredentials.create(this.accessKeyId, this.secretAccessKey)
+					: AwsSessionCredentials.create(this.accessKeyId, this.secretAccessKey, this.sessionToken);
+		}
+
+		@Override
+		public AwsCredentials resolveCredentials(String mfaToken) {
+			return this.resolveCredentials();
+		}
+
+		@Override
+		public com.amazonaws.auth.AWSCredentials getCredentials() {
+			throw new UnsupportedOperationException("v1 path not used");
+		}
+
+		@Override
+		public com.amazonaws.auth.AWSCredentials getCredentials(String mfaToken) {
+			throw new UnsupportedOperationException("v1 path not used");
+		}
+
+		@Override
+		public void refresh() {
+		}
+
+		@Override
+		public String getDisplayName() {
+			return "stub";
+		}
+	}
+
+	private String registerStub(String id, String sessionToken) throws Exception {
+		SystemCredentialsProvider.getInstance().getCredentials().add(new StubCredentials(id, "key", "secret", sessionToken));
+		SystemCredentialsProvider.getInstance().save();
+		return id;
+	}
+
+	private WorkflowRun runEchoingSessionToken(String jobName, String credentialsId) throws Exception {
+		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, jobName);
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  withAWS (credentials: '" + credentialsId + "') {\n"
+				+ "    echo \"token=[${env.AWS_SESSION_TOKEN}]\"\n"
+				+ "  }\n"
+				+ "}\n", true)
+		);
+		return jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+	}
+
+	/**
+	 * v1 read the session token only on the MFA branch, so a session credential resolved without one
+	 * lost its token and left a key/secret pair that cannot sign.
+	 */
+	@Test
+	public void sessionCredentialsExportTheirTokenWithoutMfa() throws Exception {
+		String id = this.registerStub("stub-session-creds", "the-session-token");
+
+		WorkflowRun run = this.runEchoingSessionToken("testSessionToken", id);
+
+		jenkinsRule.assertLogContains("token=[the-session-token]", run);
+	}
+
+	@Test
+	public void basicCredentialsExportNoToken() throws Exception {
+		String id = this.registerStub("stub-basic-creds", null);
+
+		WorkflowRun run = this.runEchoingSessionToken("testNoSessionToken", id);
+
+		jenkinsRule.assertLogContains("token=[null]", run);
+	}
+
 }

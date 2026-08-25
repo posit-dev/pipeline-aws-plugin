@@ -37,6 +37,7 @@ public class IamRoleUtilsTest {
 
 		// example of type 'aws-us-gov'
 		Assert.assertEquals("aws-us-gov", IamRoleUtils.selectPartitionName("us-gov-west-1"));
+		Assert.assertEquals("aws", IamRoleUtils.selectPartitionName("eu-west-1"));
 		// no exception -> ok
 	}
 
@@ -58,6 +59,15 @@ public class IamRoleUtilsTest {
 	@Test
 	public void anUnknownRegionStillResolvesToAPartition() throws Exception {
 		Assert.assertEquals("aws", IamRoleUtils.selectPartitionName("made-up-region"));
+	}
+
+	/**
+	 * Region.of only rejects a blank name, so an untrimmed region would match no partition and fall
+	 * through to aws - silently producing an arn:aws role ARN for a China-partition role.
+	 */
+	@Test
+	public void surroundingWhitespaceDoesNotChangeThePartition() throws Exception {
+		Assert.assertEquals("aws-cn", IamRoleUtils.selectPartitionName(" cn-north-1 "));
 	}
 
 }

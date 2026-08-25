@@ -41,8 +41,8 @@ import software.amazon.awssdk.transfer.s3.model.CompletedDirectoryDownload;
 
 import java.io.File;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
@@ -68,15 +68,20 @@ public class S3DownloadLayoutTest {
 	@Rule
 	public Timeout timeout = Timeout.seconds(60);
 
-	private static S3AsyncClient stubClientReturning(List<String> keys) {
+	/**
+	 * Keys carry an explicit size because the SDK's default filter distinguishes on it: a
+	 * delimiter-terminated key of size zero is a folder marker it already skips, one with content is
+	 * not.
+	 */
+	private static S3AsyncClient stubClientReturning(Map<String, Long> keys) {
 		S3AsyncClient client = Mockito.mock(S3AsyncClient.class);
 
 		// stub the underlying call first: the real publisher drives it, so it must already answer
 		Mockito.when(client.listObjectsV2(Mockito.any(ListObjectsV2Request.class)))
 				.thenReturn(CompletableFuture.completedFuture(ListObjectsV2Response.builder()
-						.contents(keys.stream()
-								.map(k -> S3Object.builder().key(k).size(4L).build())
-								.collect(java.util.stream.Collectors.toList()))
+						.contents(keys.entrySet().stream()
+								.map(e -> S3Object.builder().key(e.getKey()).size(e.getValue()).build())
+								.collect(Collectors.toList()))
 						.isTruncated(false)
 						.build()));
 		Mockito.when(client.listObjectsV2Paginator(Mockito.any(ListObjectsV2Request.class)))
@@ -94,7 +99,7 @@ public class S3DownloadLayoutTest {
 		return client;
 	}
 
-	private CompletedDirectoryDownload download(String prefix, List<String> keys, File destination) {
+	private CompletedDirectoryDownload download(String prefix, Map<String, Long> keys, File destination) {
 		try (S3AsyncClient client = stubClientReturning(keys);
 				S3TransferManager mgr = S3TransferManager.builder().s3Client(client).build()) {
 			// exactly the request the step issues - layout depends on the destination and the listing
@@ -114,7 +119,7 @@ public class S3DownloadLayoutTest {
 		File destination = this.folder.getRoot();
 
 		CompletedDirectoryDownload completed = this.download("a/b/",
-				Arrays.asList("a/b/x.txt", "a/b/nested/y.txt"), destination);
+				sized("a/b/x.txt", 4L, "a/b/nested/y.txt", 4L), destination);
 
 		assertThat(completed.failedTransfers()).isEmpty();
 		assertThat(new File(destination, "a/b/x.txt")).exists();
@@ -129,7 +134,7 @@ public class S3DownloadLayoutTest {
 		File destination = this.folder.getRoot();
 
 		CompletedDirectoryDownload completed = this.download("",
-				Arrays.asList("top.txt", "sub/deeper.txt"), destination);
+				sized("top.txt", 4L, "sub/deeper.txt", 4L), destination);
 
 		assertThat(completed.failedTransfers()).isEmpty();
 		assertThat(new File(destination, "top.txt")).exists();
@@ -137,19 +142,41 @@ public class S3DownloadLayoutTest {
 	}
 
 	/**
-	 * The zero-byte "folder marker" objects the S3 console creates, whose key ends in the delimiter.
-	 * v2 normalises such a key to an empty relative path, which resolves to the destination directory
-	 * itself and cannot be written as a file - so without the filter each one is a failed transfer,
-	 * and the step's failed-transfer check would turn a console-created folder into a failed build.
+	 * A zero-byte delimiter-terminated key is the folder marker the S3 console creates, and the SDK's
+	 * default filter already excludes it. Pinned so that the step's own filter can be recognised as a
+	 * widening of that rather than the thing handling this case.
 	 */
 	@Test
-	public void folderMarkerObjectsAreSkippedRatherThanFailingTheDownload() {
+	public void zeroByteFolderMarkersAreSkipped() {
 		File destination = this.folder.getRoot();
 
 		CompletedDirectoryDownload completed = this.download("a/b/",
-				Arrays.asList("a/b/", "a/b/x.txt"), destination);
+				sized("a/b/", 0L, "a/b/x.txt", 4L), destination);
 
 		assertThat(completed.failedTransfers()).isEmpty();
 		assertThat(new File(destination, "a/b/x.txt")).exists();
+	}
+
+	/**
+	 * A delimiter-terminated key *with* content is what the step's own filter adds: the SDK default
+	 * accepts it, and v2 normalises it to an empty relative path that resolves to the destination
+	 * directory itself - unwritable as a file, so a failed transfer and hence a failed build.
+	 */
+	@Test
+	public void delimiterTerminatedKeysWithContentAreSkippedToo() {
+		File destination = this.folder.getRoot();
+
+		CompletedDirectoryDownload completed = this.download("a/b/",
+				sized("a/b/", 4L, "a/b/x.txt", 4L), destination);
+
+		assertThat(completed.failedTransfers()).isEmpty();
+		assertThat(new File(destination, "a/b/x.txt")).exists();
+	}
+
+	private static Map<String, Long> sized(String k1, long s1, String k2, long s2) {
+		Map<String, Long> keys = new LinkedHashMap<>();
+		keys.put(k1, s1);
+		keys.put(k2, s2);
+		return keys;
 	}
 }

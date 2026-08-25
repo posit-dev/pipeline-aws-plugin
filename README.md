@@ -1161,8 +1161,9 @@ ebWaitOnEnvironmentHealth(
   `ebSwapEnvironmentCNAMEs`, `ebWaitOnEnvironmentStatus`, `ebWaitOnEnvironmentHealth`,
   `invokeLambda`, `cfInvalidate`, `ecrDeleteImage`, `ecrListImages`, `ecrSetRepositoryPolicy`,
   `ecrLogin`, `lambdaVersionCleanup`, `cfnValidate`, `cfnUpdate`, `cfnDelete`, `cfnDescribe`,
-  `cfnExports`, `cfnCreateChangeSet`, `cfnExecuteChangeSet`, `cfnUpdateStackSet` and
-  `cfnDeleteStackSet`. Behaviour and step parameters are unchanged, but AWS
+  `cfnExports`, `cfnCreateChangeSet`, `cfnExecuteChangeSet`, `cfnUpdateStackSet`,
+  `cfnDeleteStackSet`, `s3Delete`, `s3FindFiles`, `s3DoesObjectExist`, `s3PresignURL`, `s3Copy`,
+  `s3Upload`, `s3Download`, `withAWS` and `awsIdentity`. Behaviour and step parameters are unchanged, but AWS
   errors from these steps now surface as SDK v2 exceptions
   (`software.amazon.awssdk.services...Exception`) rather than `com.amazonaws...AmazonServiceException`,
   so build logs and anything scraping them will show different exception names and wording. The ELB
@@ -1209,6 +1210,14 @@ ebWaitOnEnvironmentHealth(
   The v1 exception crossed the remoting channel intact; the v2 one does not, and arrives as
   `hudson.remoting.ProxyException`. The AWS error message is preserved, so catching `Exception` and
   inspecting the message still works.
+* `withAWS(credentials: ...)` now exports `AWS_SESSION_TOKEN` whenever the resolved credential
+  carries one, not only when `iamMfaToken` is supplied. SDK v1 read the token on the MFA path alone,
+  so a credential that resolved to a session credential without MFA was exported as a key and secret
+  with no token - a pair that cannot sign. Pipelines relying on that partial credential set will now
+  authenticate as the session was intended to.
+  Note one limitation, unchanged from v1: a credential that is *not* a session credential leaves any
+  inherited `AWS_SESSION_TOKEN` in place, so nesting `withAWS(credentials: 'static-keys')` inside
+  `withAWS(role: ...)` still signs with the outer block's token.
 * `s3Download` of a directory keeps putting files where SDK v1 put them. SDK v2 resolves object keys
   relative to the listing prefix, so `s3Download(bucket: 'b', path: 'a/b/', file: 'out')` would have
   written `out/x.txt` where v1 wrote `out/a/b/x.txt` - a silent change, since the download itself

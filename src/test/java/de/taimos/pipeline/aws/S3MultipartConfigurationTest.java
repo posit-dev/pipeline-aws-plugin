@@ -69,8 +69,11 @@ public class S3MultipartConfigurationTest {
 	 * Downloads get no multipart configuration at all. v1 had none, and v2's multipart download is
 	 * part-number driven - one GetObject per part the object was uploaded with - so enabling it would
 	 * multiply requests for objects this plugin uploaded in parts while buying nothing, since a
-	 * single-request download of a large object is never rejected. Without this, routing the download
-	 * factory back through the upload configuration would leave the suite green.
+	 * single-request download of a large object is never rejected.
+	 *
+	 * This pins the decision, not the wiring: createS3AsyncClientBuilderForDownload could still be
+	 * pointed back at the upload configuration without failing anything here. Asserting the wiring
+	 * needs a built client, which needs a region and credentials, and was judged not worth it.
 	 */
 	@Test
 	public void downloadsGetNoMultipartConfiguration() {

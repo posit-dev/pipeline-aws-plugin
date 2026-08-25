@@ -138,11 +138,12 @@ public class S3DownloadStep extends AbstractS3Step {
 	 * the resulting on-disk layout depends on the destination and the listing prefix together, and a
 	 * test that rebuilds the request itself can silently stop matching.
 	 *
-	 * The filter reproduces v1, which skipped keys ending in the delimiter. Those are the zero-byte
-	 * "folder marker" objects the S3 console creates, and v2 normalises such a key to an empty
-	 * relative path - resolving to the destination directory itself, which cannot be written as a
-	 * file. Without the filter each one becomes a failed transfer, and the failed-transfer check
-	 * below would turn a console-created folder into a failed build.
+	 * The filter widens the SDK's own exclusion. DownloadFilter.allObjects, the default, already skips
+	 * a delimiter-terminated key whose size is zero - the "folder marker" the S3 console creates - so
+	 * those were never a problem. It does accept a delimiter-terminated key with content, which v2
+	 * normalises to an empty relative path: that resolves to the destination directory itself, cannot
+	 * be written as a file, and would become a failed transfer and so a failed build. v1 skipped every
+	 * key ending in the delimiter regardless of size, and this restores that.
 	 */
 	static DownloadDirectoryRequest downloadDirectoryRequest(String bucket, File localFile, String prefix) {
 		return DownloadDirectoryRequest.builder()

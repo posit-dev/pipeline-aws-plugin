@@ -28,13 +28,12 @@ import software.amazon.awssdk.regions.Region;
 public final class IamRoleUtils {
 
 	private static final Pattern IAM_ROLE_PATTERN = Pattern.compile("arn:(aws|aws-cn|aws-us-gov):iam::[0-9]{12}:role/([\\w+=,.@/-]{1,512}/)?[\\w+=,.@-]{1,64}");
+	private static final String DEFAULT_PARTITION = "aws";
 	// source: http://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-limits.html
 
 	private IamRoleUtils() {
 		// hidden constructor
 	}
-
-	private static final String DEFAULT_PARTITION = "aws";
 
 	/**
 	 * Checked against v1 for us-east-1 (aws), cn-north-1 (aws-cn), us-gov-west-1 (aws-us-gov),
@@ -44,12 +43,17 @@ public final class IamRoleUtils {
 	 * withAWS(role: ..., roleAccount: ...) with no region reaches here with "". v1 answered aws for
 	 * that, while v2's Region.of rejects a blank name outright - which would turn a working pipeline
 	 * into an IllegalArgumentException before the role was even requested.
+	 *
+	 * The trimmed value is what gets resolved, not just what gets tested: Region.of only rejects a
+	 * blank name, so " cn-north-1 " would otherwise match no partition and fall through to aws,
+	 * silently building an arn:aws role ARN for a China-partition role.
 	 */
 	public static String selectPartitionName(String region) {
-		if (region == null || region.trim().isEmpty()) {
+		String trimmed = region == null ? "" : region.trim();
+		if (trimmed.isEmpty()) {
 			return DEFAULT_PARTITION;
 		}
-		return PartitionMetadata.of(Region.of(region)).id();
+		return PartitionMetadata.of(Region.of(trimmed)).id();
 	}
 
 	public static boolean validRoleArn(String role) {
