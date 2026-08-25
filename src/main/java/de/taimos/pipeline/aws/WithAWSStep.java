@@ -342,6 +342,28 @@ public class WithAWSStep extends Step {
 
 		}
 
+		/**
+		 * Every branch that installs a key and secret has to drop an inherited AWS_SESSION_TOKEN with
+		 * them. Pairing new credentials with a token belonging to something else does not sign, so
+		 * withAWS(credentials: ...) nested inside withAWS(role: ...) would fail every nested call.
+		 *
+		 * put, not override: EnvVars.override treats an empty value as "remove this key", so override
+		 * here would drop the entry from the overlay and let the outer value show through unchanged.
+		 * Carrying an empty value instead makes the expander's own overrideAll remove it from the
+		 * body's environment, which is what is wanted.
+		 *
+		 * A token supplied deliberately out of band - from withEnv, a global, or a credentials binding
+		 * - is dropped too, because the step cannot tell that apart from a stale one. Logged so the
+		 * resulting 403s are diagnosable rather than mysterious.
+		 */
+		private void clearInheritedSessionToken(@NonNull EnvVars localEnv) throws IOException, InterruptedException {
+			if (!StringUtils.isEmpty(this.envVars.get(AWSClientFactory.AWS_SESSION_TOKEN))) {
+				this.getContext().get(TaskListener.class).getLogger().println(
+						"Dropping the inherited AWS_SESSION_TOKEN: these credentials do not carry one");
+			}
+			localEnv.put(AWSClientFactory.AWS_SESSION_TOKEN, "");
+		}
+
 		private void withCredentials(@NonNull Run<?, ?> run, @NonNull EnvVars localEnv) throws IOException, InterruptedException {
 			if (!StringUtils.isEmpty(this.step.getCredentials())) {
 				StandardUsernamePasswordCredentials usernamePasswordCredentials = CredentialsProvider.findCredentialById(this.step.getCredentials(),
@@ -352,6 +374,7 @@ public class WithAWSStep extends Step {
 				if (usernamePasswordCredentials != null) {
 					localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, usernamePasswordCredentials.getUsername());
 					localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, usernamePasswordCredentials.getPassword().getPlainText());
+					this.clearInheritedSessionToken(localEnv);
 				} else if (amazonWebServicesCredentials != null) {
 					AwsCredentials awsCredentials;
 
@@ -375,15 +398,7 @@ public class WithAWSStep extends Step {
 					if (awsCredentials instanceof AwsSessionCredentialsIdentity) {
 						localEnv.override(AWSClientFactory.AWS_SESSION_TOKEN, ((AwsSessionCredentialsIdentity) awsCredentials).sessionToken());
 					} else {
-						// A non-session credential has to clear any inherited token, or
-						// withAWS(credentials: 'static-keys') nested inside withAWS(role: ...) would sign
-						// with the new key and secret and the outer block's token, which AWS rejects.
-						//
-						// put, not override: EnvVars.override treats an empty value as "remove this key",
-						// so override here would drop the entry from the overlay and let the outer value
-						// show through unchanged. Carrying an empty value instead makes the expander's own
-						// overrideAll remove it from the body's environment, which is what is wanted.
-						localEnv.put(AWSClientFactory.AWS_SESSION_TOKEN, "");
+						this.clearInheritedSessionToken(localEnv);
 					}
 
 					localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, awsCredentials.accessKeyId());
@@ -394,6 +409,8 @@ public class WithAWSStep extends Step {
 			} else if (!StringUtils.isEmpty(this.step.getSamlAssertion())) {
 				localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, "access_key_not_used_will_pass_through_SAML_assertion");
 				localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, "secret_access_key_not_used_will_pass_through_SAML_assertion");
+				// placeholders rather than real keys, but an inherited token is no more valid with them
+				this.clearInheritedSessionToken(localEnv);
 			}
 			this.envVars.overrideAll(localEnv);
 		}

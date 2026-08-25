@@ -566,4 +566,70 @@ public class WithAWSStepTest {
 
 		jenkinsRule.assertLogContains("token=[third-party-token]", run);
 	}
+
+	/**
+	 * The branch the changelog's "static keys" example actually points at: README documents a Jenkins
+	 * username/password credential as the way to pass an access key and secret, and withCredentials
+	 * tests that branch first. It installs a key and secret without touching the token, so an inherited
+	 * one has to be dropped here too.
+	 */
+	@Test
+	public void usernamePasswordCredentialsClearAnInheritedSessionToken() throws Exception {
+		String credentialsId = "user-pass-creds-nested";
+		StandardUsernamePasswordCredentials credentials = new UsernamePasswordCredentialsImpl(
+				CredentialsScope.GLOBAL, credentialsId, "desc", "access-key-id", "secret-access-key");
+		SystemCredentialsProvider.getInstance().getCredentials().add(credentials);
+		SystemCredentialsProvider.getInstance().save();
+
+		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "testUserPassClearsToken");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  withEnv(['AWS_SESSION_TOKEN=inherited-token']) {\n"
+				+ "    withAWS (credentials: '" + credentialsId + "') {\n"
+				+ "      echo \"token=[${env.AWS_SESSION_TOKEN}]\"\n"
+				+ "      echo \"key=[${env.AWS_ACCESS_KEY_ID}]\"\n"
+				+ "    }\n"
+				+ "  }\n"
+				+ "}\n", true)
+		);
+		WorkflowRun run = jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+
+		jenkinsRule.assertLogContains("token=[null]", run);
+		jenkinsRule.assertLogContains("key=[access-key-id]", run);
+		// the drop is logged, so the 403s it can cause are diagnosable
+		jenkinsRule.assertLogContains("Dropping the inherited AWS_SESSION_TOKEN", run);
+	}
+
+	/**
+	 * The SAML branch installs placeholder keys, with which an inherited token is no more valid.
+	 */
+	@Test
+	public void samlAssertionClearsAnInheritedSessionToken() throws Exception {
+		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "testSamlClearsToken");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  withEnv(['AWS_SESSION_TOKEN=inherited-token']) {\n"
+				+ "    withAWS (samlAssertion: 'base64SAML') {\n"
+				+ "      echo \"token=[${env.AWS_SESSION_TOKEN}]\"\n"
+				+ "    }\n"
+				+ "  }\n"
+				+ "}\n", true)
+		);
+		WorkflowRun run = jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+
+		jenkinsRule.assertLogContains("token=[null]", run);
+	}
+
+	/**
+	 * No inherited token means nothing to report - the log line exists to explain a drop, not to
+	 * appear on every withAWS.
+	 */
+	@Test
+	public void nothingIsLoggedWhenThereIsNoTokenToDrop() throws Exception {
+		this.registerStub("stub-basic-creds-quiet", null);
+
+		WorkflowRun run = this.runEchoingSessionToken("testQuietWhenNoToken", "stub-basic-creds-quiet");
+
+		jenkinsRule.assertLogNotContains("Dropping the inherited AWS_SESSION_TOKEN", run);
+	}
 }

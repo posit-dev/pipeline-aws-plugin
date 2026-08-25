@@ -1216,9 +1216,13 @@ ebWaitOnEnvironmentHealth(
   with no token - a pair that cannot sign. Pipelines relying on that partial credential set will now
   authenticate as the session was intended to.
 * Fixed: `withAWS(credentials: ...)` with a credential that carries no session token now clears any
-  inherited `AWS_SESSION_TOKEN` for the block. Nesting `withAWS(credentials: 'static-keys')` inside
-  `withAWS(role: ...)` previously signed the inner block with the new key and secret and the outer
-  block's token, which AWS rejects.
+  inherited `AWS_SESSION_TOKEN` for the block, whether the credential is a Jenkins username/password
+  pair or an AWS credential. Nesting it inside `withAWS(role: ...)` previously signed the inner block
+  with the new key and secret and the outer block's token, which AWS rejects. `withAWS(samlAssertion:
+  ...)` clears it too.
+  Note the flip side: an `AWS_SESSION_TOKEN` set deliberately out of band - from `withEnv`, a global
+  environment variable, or a credentials binding - is no longer visible inside the block either, since
+  the step cannot distinguish it from a stale one. The drop is logged when it happens.
 * `s3Download` of a directory keeps putting files where SDK v1 put them. SDK v2 resolves object keys
   relative to the listing prefix, so `s3Download(bucket: 'b', path: 'a/b/', file: 'out')` would have
   written `out/x.txt` where v1 wrote `out/a/b/x.txt` - a silent change, since the download itself

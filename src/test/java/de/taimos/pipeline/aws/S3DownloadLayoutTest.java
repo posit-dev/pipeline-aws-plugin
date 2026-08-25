@@ -189,11 +189,17 @@ public class S3DownloadLayoutTest {
 
 	/**
 	 * Alternating key and size, so a case needing a third object does not need a new overload.
+	 *
+	 * Number rather than Long, because sized("x", 4) with an int literal would otherwise compile and
+	 * fail at runtime with a ClassCastException from inside here.
 	 */
 	private static Map<String, Long> sized(Object... keysAndSizes) {
+		if (keysAndSizes.length % 2 != 0) {
+			throw new IllegalArgumentException("expected alternating key and size, got " + keysAndSizes.length + " arguments");
+		}
 		Map<String, Long> keys = new LinkedHashMap<>();
 		for (int i = 0; i < keysAndSizes.length; i += 2) {
-			keys.put((String) keysAndSizes[i], (Long) keysAndSizes[i + 1]);
+			keys.put((String) keysAndSizes[i], ((Number) keysAndSizes[i + 1]).longValue());
 		}
 		return keys;
 	}
