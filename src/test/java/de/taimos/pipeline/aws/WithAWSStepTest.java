@@ -601,23 +601,59 @@ public class WithAWSStepTest {
 	}
 
 	/**
-	 * The SAML branch installs placeholder keys, with which an inherited token is no more valid.
+	 * The SAML branch in the shape it is actually used - samlAssertion on its own does nothing, since
+	 * only withRole consumes it.
+	 *
+	 * This pins that the documented flow still reaches STS with an inherited token present; it does
+	 * not demonstrate that the clear is what makes that work. Checked by removing the clear: the error
+	 * is unchanged, so the inherited token does not affect the AssumeRoleWithSAML call. The clear
+	 * still matters on this branch for anything in the body that would otherwise inherit a stale
+	 * token alongside the placeholder keys.
 	 */
 	@Test
-	public void samlAssertionClearsAnInheritedSessionToken() throws Exception {
+	public void samlAssertionStillReachesStsWithAnInheritedToken() throws Exception {
 		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "testSamlClearsToken");
 		job.setDefinition(new CpsFlowDefinition(""
 				+ "node {\n"
 				+ "  withEnv(['AWS_SESSION_TOKEN=inherited-token']) {\n"
-				+ "    withAWS (samlAssertion: 'base64SAML') {\n"
-				+ "      echo \"token=[${env.AWS_SESSION_TOKEN}]\"\n"
+				+ "    withAWS (role: 'myRole', roleAccount: '123456789012', principalArn: 'arn:aws:iam::123456789012:saml-provider/test', samlAssertion: 'base64SAML', region: 'eu-west-1') {\n"
+				+ "      echo 'It works!'\n"
 				+ "    }\n"
 				+ "  }\n"
 				+ "}\n", true)
 		);
-		WorkflowRun run = jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+		WorkflowRun workflowRun = job.scheduleBuild2(0).get();
+		jenkinsRule.waitForCompletion(workflowRun);
+		jenkinsRule.assertBuildStatus(Result.FAILURE, workflowRun);
 
-		jenkinsRule.assertLogContains("token=[null]", run);
+		jenkinsRule.assertLogContains("Specified provider doesn't exist", workflowRun);
+	}
+
+	/**
+	 * The drop is not announced when a later stage installs a token of its own - start() runs withRole
+	 * after withCredentials - or the message would be a false alarm on a build that ends up fine.
+	 */
+	@Test
+	public void nothingIsLoggedWhenARoleWillSupplyAToken() throws Exception {
+		String credentialsId = "user-pass-creds-with-role";
+		SystemCredentialsProvider.getInstance().getCredentials().add(new UsernamePasswordCredentialsImpl(
+				CredentialsScope.GLOBAL, credentialsId, "desc", "access-key-id", "secret-access-key"));
+		SystemCredentialsProvider.getInstance().save();
+
+		WorkflowJob job = jenkinsRule.jenkins.createProject(WorkflowJob.class, "testQuietWhenRoleFollows");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  withEnv(['AWS_SESSION_TOKEN=inherited-token']) {\n"
+				+ "    withAWS (credentials: '" + credentialsId + "', role: 'myRole', roleAccount: '123456789012') {\n"
+				+ "      echo 'It works!'\n"
+				+ "    }\n"
+				+ "  }\n"
+				+ "}\n", true)
+		);
+		WorkflowRun workflowRun = job.scheduleBuild2(0).get();
+		jenkinsRule.waitForCompletion(workflowRun);
+
+		jenkinsRule.assertLogNotContains("Dropping the inherited AWS_SESSION_TOKEN", workflowRun);
 	}
 
 	/**

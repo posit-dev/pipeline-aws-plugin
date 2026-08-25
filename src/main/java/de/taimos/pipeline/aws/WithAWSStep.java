@@ -355,9 +355,16 @@ public class WithAWSStep extends Step {
 		 * A token supplied deliberately out of band - from withEnv, a global, or a credentials binding
 		 * - is dropped too, because the step cannot tell that apart from a stale one. Logged so the
 		 * resulting 403s are diagnosable rather than mysterious.
+		 *
+		 * Not logged when role or federatedUserId is set: start() runs those stages after this one and
+		 * both install a token of their own, so the block ends up with a valid one and the message
+		 * would be a false alarm - including for the only documented SAML usage, which pairs the
+		 * assertion with a role.
 		 */
 		private void clearInheritedSessionToken(@NonNull EnvVars localEnv) throws IOException, InterruptedException {
-			if (!StringUtils.isEmpty(this.envVars.get(AWSClientFactory.AWS_SESSION_TOKEN))) {
+			boolean aLaterStageSuppliesOne = !StringUtils.isEmpty(this.step.getRole())
+					|| !StringUtils.isEmpty(this.step.getFederatedUserId());
+			if (!aLaterStageSuppliesOne && !StringUtils.isEmpty(this.envVars.get(AWSClientFactory.AWS_SESSION_TOKEN))) {
 				this.getContext().get(TaskListener.class).getLogger().println(
 						"Dropping the inherited AWS_SESSION_TOKEN: these credentials do not carry one");
 			}
@@ -409,7 +416,9 @@ public class WithAWSStep extends Step {
 			} else if (!StringUtils.isEmpty(this.step.getSamlAssertion())) {
 				localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, "access_key_not_used_will_pass_through_SAML_assertion");
 				localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, "secret_access_key_not_used_will_pass_through_SAML_assertion");
-				// placeholders rather than real keys, but an inherited token is no more valid with them
+				// Placeholders rather than real keys, so a stale token alongside them is no more valid.
+				// It does not affect the AssumeRoleWithSAML call itself - removing this clear leaves the
+				// STS error unchanged - but it keeps the body from inheriting one.
 				this.clearInheritedSessionToken(localEnv);
 			}
 			this.envVars.overrideAll(localEnv);
