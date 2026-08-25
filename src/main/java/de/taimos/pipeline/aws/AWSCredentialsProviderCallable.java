@@ -20,7 +20,6 @@
  */
 package de.taimos.pipeline.aws;
 
-import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 
 import hudson.model.TaskListener;
@@ -46,9 +45,14 @@ public class AWSCredentialsProviderCallable extends MasterToSlaveFileCallable<Se
 
 	@Override
 	public SerializableAWSCredentialsProvider invoke(File f, VirtualChannel vc) throws IOException, InterruptedException {
-		AwsCredentialsProvider provider = DefaultCredentialsProvider.create();
-		listener.getLogger().println("Retrieving credentials from node.");
-		return new SerializableAWSCredentialsProvider(provider);
+		// Closed here: unlike v1's DefaultAWSCredentialsProviderChain, v2's provider is
+		// SdkAutoCloseable and holds a profile-file supplier and container/IMDS caches. The
+		// credentials are resolved eagerly in the constructor below, so nothing needs it afterwards -
+		// and with AWS_PIPELINE_STEPS_FROM_NODE this runs once per step per build.
+		try (DefaultCredentialsProvider provider = DefaultCredentialsProvider.create()) {
+			listener.getLogger().println("Retrieving credentials from node.");
+			return new SerializableAWSCredentialsProvider(provider);
+		}
 	}
 
 	private static final long serialVersionUID = 1L;

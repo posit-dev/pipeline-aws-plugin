@@ -24,7 +24,6 @@ package de.taimos.pipeline.aws;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.google.common.base.Joiner;
 
 import hudson.EnvVars;
 import jenkins.model.Jenkins;
@@ -37,7 +36,6 @@ import java.util.Set;
 class ProxyConfiguration {
 
 	static final String HTTP_PROXY = "HTTP_PROXY";
-	static final String HTTP_PROXY_LC = "http_proxy";
 	static final String HTTPS_PROXY = "HTTPS_PROXY";
 	static final String HTTPS_PROXY_LC = "https_proxy";
 	static final String NO_PROXY = "NO_PROXY";
@@ -53,8 +51,7 @@ class ProxyConfiguration {
 	}
 
 	/**
-	 * Builds the proxy configuration for the
-	 * Apache (synchronous) HTTP client.
+	 * Builds the proxy configuration for the Apache (synchronous) HTTP client.
 	 *
 	 * The v1 path branches on {@code ClientConfiguration.getProtocol()}, but nothing in this plugin
 	 * ever calls {@code setProtocol} and the v1 default is HTTPS, so the HTTP branch there is

@@ -188,11 +188,14 @@ public class WithAWSStepTest {
 		envVars.put(AWSClientFactory.AWS_ACCESS_KEY_ID, "AKIAEXAMPLE");
 		envVars.put(AWSClientFactory.AWS_SECRET_ACCESS_KEY, "secret");
 
-		// v2 exposes the override on the built client's configuration rather than on the builder
-		final S3Client client = AWSClientFactory.create(S3Client.builder(), null, envVars);
-
-		Assert.assertEquals("https://minio.mycompany.com",
-				client.serviceClientConfiguration().endpointOverride().map(Object::toString).orElse(null));
+		// configureV2Builder rather than create: create consults the static factory delegate, which
+		// would make this depend on every other test class in the fork having reset it - a leaked
+		// delegate would surface here as a ClassCastException on someone else's mock. v2 exposes the
+		// override on the built client's configuration rather than on the builder.
+		try (S3Client client = AWSClientFactory.configureV2Builder(S3Client.builder(), null, envVars).build()) {
+			Assert.assertEquals("https://minio.mycompany.com",
+					client.serviceClientConfiguration().endpointOverride().map(Object::toString).orElse(null));
+		}
 	}
 
 	@Test

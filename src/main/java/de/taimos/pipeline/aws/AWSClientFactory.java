@@ -267,7 +267,7 @@ public class AWSClientFactory implements Serializable {
 	private static AwsCredentialsProvider getV2CredentialsFromNode(StepContext context, EnvVars envVars) throws IOException, InterruptedException {
 		FilePath ws = context.get(FilePath.class);
 		TaskListener listener = context.get(TaskListener.class);
-		// SerializableAWSCredentialsProvider implements both SDKs' provider interfaces.
+		// SerializableAWSCredentialsProvider is the v2 provider carried back from the node.
 		return ws.act(new AWSCredentialsProviderCallable(listener));
 	}
 
