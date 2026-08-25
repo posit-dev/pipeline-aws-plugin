@@ -22,7 +22,8 @@ package de.taimos.pipeline.aws.utils;
 
 import java.util.regex.Pattern;
 
-import com.amazonaws.regions.RegionUtils;
+import software.amazon.awssdk.regions.PartitionMetadata;
+import software.amazon.awssdk.regions.Region;
 
 public final class IamRoleUtils {
 
@@ -33,8 +34,22 @@ public final class IamRoleUtils {
 		// hidden constructor
 	}
 
+	private static final String DEFAULT_PARTITION = "aws";
+
+	/**
+	 * Checked against v1 for us-east-1 (aws), cn-north-1 (aws-cn), us-gov-west-1 (aws-us-gov),
+	 * eu-west-1 (aws) and an unknown region name, which both resolve to aws rather than failing.
+	 *
+	 * The blank case needs handling explicitly: withAWS defaults region to the empty string, so
+	 * withAWS(role: ..., roleAccount: ...) with no region reaches here with "". v1 answered aws for
+	 * that, while v2's Region.of rejects a blank name outright - which would turn a working pipeline
+	 * into an IllegalArgumentException before the role was even requested.
+	 */
 	public static String selectPartitionName(String region) {
-		return (RegionUtils.getRegion(region).getPartition());
+		if (region == null || region.trim().isEmpty()) {
+			return DEFAULT_PARTITION;
+		}
+		return PartitionMetadata.of(Region.of(region)).id();
 	}
 
 	public static boolean validRoleArn(String role) {

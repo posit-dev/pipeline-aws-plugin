@@ -37,15 +37,14 @@ import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
-import com.amazonaws.services.securitytoken.model.Credentials;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
-import com.amazonaws.services.securitytoken.model.GetFederationTokenRequest;
-import com.amazonaws.services.securitytoken.model.GetFederationTokenResult;
-import com.amazonaws.util.StringUtils;
+import org.apache.commons.lang.StringUtils;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.model.Credentials;
+import software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest;
+import software.amazon.awssdk.services.sts.model.GetFederationTokenRequest;
+import software.amazon.awssdk.services.sts.model.GetFederationTokenResponse;
 import com.cloudbees.jenkins.plugins.awscredentials.AmazonWebServicesCredentials;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
@@ -323,26 +322,27 @@ public class WithAWSStep extends Step {
 				+ "\"Effect\":\"Allow\",\"Resource\":\"*\"}]}";
 
 		private void withFederatedUserId(@NonNull EnvVars localEnv) {
-			if (!StringUtils.isNullOrEmpty(this.step.getFederatedUserId())) {
-				AWSSecurityTokenService sts = AWSClientFactory.create(AWSSecurityTokenServiceClientBuilder.standard(), this.getContext(), this.envVars);
-				GetFederationTokenRequest getFederationTokenRequest = new GetFederationTokenRequest();
-				getFederationTokenRequest.setDurationSeconds(this.step.getDuration());
-				getFederationTokenRequest.setName(this.step.getFederatedUserId());
-				getFederationTokenRequest.setPolicy(ALLOW_ALL_POLICY);
+			if (!StringUtils.isEmpty(this.step.getFederatedUserId())) {
+				StsClient sts = AWSClientFactory.create(StsClient.builder(), this.getContext(), this.envVars);
+				GetFederationTokenRequest getFederationTokenRequest = GetFederationTokenRequest.builder()
+						.durationSeconds(this.step.getDuration())
+						.name(this.step.getFederatedUserId())
+						.policy(ALLOW_ALL_POLICY)
+						.build();
 
-				GetFederationTokenResult federationTokenResult = sts.getFederationToken(getFederationTokenRequest);
+				GetFederationTokenResponse federationTokenResult = sts.getFederationToken(getFederationTokenRequest);
 
-				Credentials credentials = federationTokenResult.getCredentials();
-				localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, credentials.getAccessKeyId());
-				localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, credentials.getSecretAccessKey());
-				localEnv.override(AWSClientFactory.AWS_SESSION_TOKEN, credentials.getSessionToken());
+				Credentials credentials = federationTokenResult.credentials();
+				localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, credentials.accessKeyId());
+				localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, credentials.secretAccessKey());
+				localEnv.override(AWSClientFactory.AWS_SESSION_TOKEN, credentials.sessionToken());
 				this.envVars.overrideAll(localEnv);
 			}
 
 		}
 
 		private void withCredentials(@NonNull Run<?, ?> run, @NonNull EnvVars localEnv) throws IOException, InterruptedException {
-			if (!StringUtils.isNullOrEmpty(this.step.getCredentials())) {
+			if (!StringUtils.isEmpty(this.step.getCredentials())) {
 				StandardUsernamePasswordCredentials usernamePasswordCredentials = CredentialsProvider.findCredentialById(this.step.getCredentials(),
 						StandardUsernamePasswordCredentials.class, run, Collections.emptyList());
 
@@ -352,26 +352,32 @@ public class WithAWSStep extends Step {
 					localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, usernamePasswordCredentials.getUsername());
 					localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, usernamePasswordCredentials.getPassword().getPlainText());
 				} else if (amazonWebServicesCredentials != null) {
-					AWSCredentials awsCredentials;
+					AwsCredentials awsCredentials;
 
-					if (StringUtils.isNullOrEmpty(this.step.getIamMfaToken())) {
+					if (StringUtils.isEmpty(this.step.getIamMfaToken())) {
 						this.getContext().get(TaskListener.class).getLogger().format("Constructing AWS Credentials");
-						awsCredentials = amazonWebServicesCredentials.getCredentials();
+						awsCredentials = amazonWebServicesCredentials.resolveCredentials();
 					} else {
-						// Since the getCredentials does its own roleAssumption, this is all it takes to get credentials
+						// Since resolveCredentials does its own roleAssumption, this is all it takes to get credentials
 						// with this token.
 						this.getContext().get(TaskListener.class).getLogger().format("Constructing AWS Credentials utilizing MFA Token");
-						awsCredentials = amazonWebServicesCredentials.getCredentials(this.step.getIamMfaToken());
-						BasicSessionCredentials basicSessionCredentials = (BasicSessionCredentials) awsCredentials;
-						localEnv.override(AWSClientFactory.AWS_SESSION_TOKEN, basicSessionCredentials.getSessionToken());
+						awsCredentials = amazonWebServicesCredentials.resolveCredentials(this.step.getIamMfaToken());
 					}
 
-					localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, awsCredentials.getAWSAccessKeyId());
-					localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, awsCredentials.getAWSSecretKey());
+					// v1 cast to BasicSessionCredentials on the MFA branch only. v2 collapses v1's
+					// BasicSessionCredentials and STSSessionCredentials into AwsSessionCredentials, so
+					// this tests the type instead - which also covers a session token arriving on the
+					// non-MFA branch, where v1 would have dropped it.
+					if (awsCredentials instanceof AwsSessionCredentials) {
+						localEnv.override(AWSClientFactory.AWS_SESSION_TOKEN, ((AwsSessionCredentials) awsCredentials).sessionToken());
+					}
+
+					localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, awsCredentials.accessKeyId());
+					localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, awsCredentials.secretAccessKey());
 				} else {
 					throw new RuntimeException("Cannot find a Username with password credential with the ID " + this.step.getCredentials());
 				}
-			} else if (!StringUtils.isNullOrEmpty(this.step.getSamlAssertion())) {
+			} else if (!StringUtils.isEmpty(this.step.getSamlAssertion())) {
 				localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, "access_key_not_used_will_pass_through_SAML_assertion");
 				localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, "secret_access_key_not_used_will_pass_through_SAML_assertion");
 			}
@@ -379,9 +385,9 @@ public class WithAWSStep extends Step {
 		}
 
 		private void withRole(@NonNull EnvVars localEnv) throws IOException, InterruptedException {
-			if (!StringUtils.isNullOrEmpty(this.step.getRole())) {
+			if (!StringUtils.isEmpty(this.step.getRole())) {
 
-				AWSSecurityTokenService sts = AWSClientFactory.create(AWSSecurityTokenServiceClientBuilder.standard(), this.getContext(), this.envVars);
+				StsClient sts = AWSClientFactory.create(StsClient.builder(), this.getContext(), this.envVars);
 
 				AssumeRole assumeRole = IamRoleUtils.validRoleArn(this.step.getRole()) ? new AssumeRole(this.step.getRole()) :
 						new AssumeRole(this.step.getRole(), this.createAccountId(sts), this.step.getRegion());
@@ -394,17 +400,17 @@ public class WithAWSStep extends Step {
 				this.getContext().get(TaskListener.class).getLogger().format("Requesting assume role%n");
 				this.getContext().get(TaskListener.class).getLogger().format("Assuming role ARN is %s", assumeRole.toString());
 				AssumedRole assumedRole = assumeRole.assumedRole(sts);
-				this.getContext().get(TaskListener.class).getLogger().format("Assumed role %s with id %s %n ", assumedRole.getAssumedRoleUser().getArn(), assumedRole.getAssumedRoleUser().getAssumedRoleId());
+				this.getContext().get(TaskListener.class).getLogger().format("Assumed role %s with id %s %n ", assumedRole.getAssumedRoleUser().arn(), assumedRole.getAssumedRoleUser().assumedRoleId());
 
-				localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, assumedRole.getCredentials().getAccessKeyId());
-				localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, assumedRole.getCredentials().getSecretAccessKey());
-				localEnv.override(AWSClientFactory.AWS_SESSION_TOKEN, assumedRole.getCredentials().getSessionToken());
+				localEnv.override(AWSClientFactory.AWS_ACCESS_KEY_ID, assumedRole.getCredentials().accessKeyId());
+				localEnv.override(AWSClientFactory.AWS_SECRET_ACCESS_KEY, assumedRole.getCredentials().secretAccessKey());
+				localEnv.override(AWSClientFactory.AWS_SESSION_TOKEN, assumedRole.getCredentials().sessionToken());
 				this.envVars.overrideAll(localEnv);
 			}
 		}
 
 		private void withRegion(@NonNull EnvVars localEnv) throws IOException, InterruptedException {
-			if (!StringUtils.isNullOrEmpty(this.step.getRegion())) {
+			if (!StringUtils.isEmpty(this.step.getRegion())) {
 				this.getContext().get(TaskListener.class).getLogger().format("Setting AWS region %s %n ", this.step.getRegion());
 				localEnv.override(AWSClientFactory.AWS_DEFAULT_REGION, this.step.getRegion());
 				localEnv.override(AWSClientFactory.AWS_REGION, this.step.getRegion());
@@ -413,7 +419,7 @@ public class WithAWSStep extends Step {
 		}
 
 		private void withEndpointUrl(@NonNull EnvVars localEnv) throws IOException, InterruptedException {
-			if (!StringUtils.isNullOrEmpty(this.step.getEndpointUrl())) {
+			if (!StringUtils.isEmpty(this.step.getEndpointUrl())) {
 				this.getContext().get(TaskListener.class).getLogger().format("Setting AWS endpointUrl %s %n ", this.step.getEndpointUrl());
 				localEnv.override(AWSClientFactory.AWS_ENDPOINT_URL, this.step.getEndpointUrl());
 				this.envVars.overrideAll(localEnv);
@@ -421,7 +427,7 @@ public class WithAWSStep extends Step {
 		}
 
 		private void withProfile(@NonNull EnvVars localEnv) throws IOException, InterruptedException {
-			if (!StringUtils.isNullOrEmpty(this.step.getProfile())) {
+			if (!StringUtils.isEmpty(this.step.getProfile())) {
 				this.getContext().get(TaskListener.class).getLogger().format("Setting AWS profile %s %n ", this.step.getProfile());
 				localEnv.override(AWSClientFactory.AWS_DEFAULT_PROFILE, this.step.getProfile());
 				localEnv.override(AWSClientFactory.AWS_PROFILE, this.step.getProfile());
@@ -430,7 +436,7 @@ public class WithAWSStep extends Step {
 		}
 
 		private String createRoleSessionName() {
-			if (StringUtils.isNullOrEmpty(this.step.roleSessionName)) {
+			if (StringUtils.isEmpty(this.step.roleSessionName)) {
 				return RoleSessionNameBuilder
 						.withJobName(this.envVars.get("JOB_NAME"))
 						.withBuildNumber(this.envVars.get("BUILD_NUMBER"))
@@ -440,11 +446,11 @@ public class WithAWSStep extends Step {
 			}
 		}
 
-		private String createAccountId(final AWSSecurityTokenService sts) {
-			if (!StringUtils.isNullOrEmpty(this.step.getRoleAccount())) {
+		private String createAccountId(final StsClient sts) {
+			if (!StringUtils.isEmpty(this.step.getRoleAccount())) {
 				return this.step.getRoleAccount();
 			} else {
-				return sts.getCallerIdentity(new GetCallerIdentityRequest()).getAccount();
+				return sts.getCallerIdentity(GetCallerIdentityRequest.builder().build()).account();
 			}
 		}
 
