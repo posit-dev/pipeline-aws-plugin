@@ -48,6 +48,9 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.URI;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.time.Duration;
@@ -233,11 +236,67 @@ public class AWSClientFactory implements Serializable {
 				.writeTimeout(socketTimeout);
 	}
 
+	/**
+	 * Shared, and deliberately never closed.
+	 *
+	 * ApacheHttpClient's constructor registers its pooling connection manager with the process-static
+	 * IdleConnectionReaper, and only close() deregisters it. Building one per invocation - which is
+	 * what this did, and what the client builders below still ask for by handing over an instance
+	 * rather than a builder - therefore leaves a connection manager, its idle sockets and a reaper
+	 * entry behind on every snsPublish, cfnUpdate, s3Delete, ecrLogin or withAWS(role:) for as long
+	 * as the controller runs. No synchronous client in this plugin is ever closed, so nothing
+	 * releases them.
+	 *
+	 * Sharing one instance per distinct configuration fixes that without touching the ~45 step call
+	 * sites: httpClient(instance) leaves ownership with the caller precisely so that a client can be
+	 * shared this way, and closing a service client does not close it. The asynchronous path needs
+	 * the opposite treatment - see getV2AsyncHttpClientBuilder - because its netty event loop must be
+	 * shut down and the transfer sites do close their clients.
+	 *
+	 * The map is bounded by the number of distinct socket-timeout and proxy combinations in use, not
+	 * by the number of invocations: the key is derived from configuration, so a controller with one
+	 * proxy and the default timeout holds exactly one pool.
+	 */
+	private static final ConcurrentMap<SyncHttpClientKey, software.amazon.awssdk.http.SdkHttpClient> SYNC_HTTP_CLIENTS = new ConcurrentHashMap<>();
+
 	static software.amazon.awssdk.http.SdkHttpClient getV2SyncHttpClient(EnvVars vars) {
-		return ApacheHttpClient.builder()
-				.socketTimeout(getV2SocketTimeout(vars))
+		SyncHttpClientKey key = new SyncHttpClientKey(getV2SocketTimeout(vars), ProxyConfiguration.v2ProxyIdentity(vars));
+		return SYNC_HTTP_CLIENTS.computeIfAbsent(key, k -> ApacheHttpClient.builder()
+				.socketTimeout(k.socketTimeout)
 				.proxyConfiguration(ProxyConfiguration.buildV2ProxyConfiguration(vars))
-				.build();
+				.build());
+	}
+
+	/**
+	 * Everything getV2SyncHttpClient varies the client on. The proxy half is an opaque value from
+	 * ProxyConfiguration, because the SDK's own ProxyConfiguration has no equals or hashCode.
+	 */
+	private static final class SyncHttpClientKey {
+		private final Duration socketTimeout;
+		private final Object proxyIdentity;
+
+		SyncHttpClientKey(Duration socketTimeout, Object proxyIdentity) {
+			this.socketTimeout = socketTimeout;
+			this.proxyIdentity = proxyIdentity;
+		}
+
+		@Override
+		public boolean equals(Object other) {
+			if (this == other) {
+				return true;
+			}
+			if (!(other instanceof SyncHttpClientKey)) {
+				return false;
+			}
+			SyncHttpClientKey that = (SyncHttpClientKey) other;
+			return Objects.equals(this.socketTimeout, that.socketTimeout)
+					&& Objects.equals(this.proxyIdentity, that.proxyIdentity);
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(this.socketTimeout, this.proxyIdentity);
+		}
 	}
 
 	static AwsCredentialsProvider getV2Credentials(EnvVars vars, StepContext context) {

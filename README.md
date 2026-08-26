@@ -1252,6 +1252,17 @@ ebWaitOnEnvironmentHealth(
 * Fixed: `s3Upload` with `includePathPattern` and `kmsId` sent the KMS key id as the server-side
   encryption *algorithm*. The single-file path set it correctly, so the two disagreed; both now go
   through one translation.
+* Fixed: an `sseAlgorithm` the SDK does not model - a typo such as `'AES-256'`, or an algorithm this
+  SDK version predates - was sent to S3 as the literal string `null` by `s3Upload` and `s3Copy`, so
+  the resulting error never named what was typed. SDK v2 maps an unrecognised value to a sentinel
+  whose string form is `"null"`; the value is now passed through verbatim as SDK v1 did, so a
+  genuinely new algorithm keeps working and a typo is reported by S3 against the value itself.
+* Synchronous AWS clients now share one HTTP connection pool per distinct socket-timeout and proxy
+  configuration, instead of creating one per step invocation. The SDK v2 Apache client registers its
+  connection manager with a process-static reaper and only deregisters it on close, which nothing in
+  this plugin does, so a long-running controller accumulated a pool per `snsPublish`, `cfnUpdate`,
+  `s3Delete`, `ecrLogin` or `withAWS(role: ...)`. SDK v1 leaked in the same way; this is the point at
+  which it stops.
 * **Breaking**: a pipeline that wraps an agent-side `s3Upload` or `s3Download` in
   `try`/`catch (com.amazonaws...AmazonS3Exception)` can no longer catch the AWS exception by type.
   The v1 exception crossed the remoting channel intact; the v2 one does not, and arrives as
@@ -1285,11 +1296,13 @@ ebWaitOnEnvironmentHealth(
 * Fixed: `s3Upload` of a directory sent every file with no bucket and no key, so the upload failed
   for all of them. Fixed before release; it never shipped.
 * Fixed: `s3Upload` of a directory with a `path` ending in `/` named every object `prefix//name`.
+  Fixed before release; it never shipped.
 * Fixed: the first `s3Upload`, `s3Copy`, `s3Download` or `s3PresignURL` in a build no longer breaks
   AWS credential resolution for everything after it. Those steps close their client when done, and an
   SDK v2 client closes the credentials provider it was given - which, without explicit credentials or
   a profile, is a process-wide shared instance. It is now wrapped so that closing a client leaves it
-  intact.
+  intact. Fixed before release; it never shipped - both the client-closing and the shared provider
+  arrived with the SDK v2 migration.
 * `s3Copy` and `s3Upload` again use a multipart transfer for large objects, at v1's settings: an
   upload becomes multipart above 16 MiB with 5 MiB parts, a copy above 5 GiB with 100 MiB parts. SDK
   v2's asynchronous client does no multipart transfer at all unless asked, and its own defaults are

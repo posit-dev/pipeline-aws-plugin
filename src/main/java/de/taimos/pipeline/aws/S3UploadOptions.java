@@ -103,7 +103,11 @@ public class S3UploadOptions implements Serializable {
 			request.contentDisposition(this.contentDisposition);
 		}
 		if (isSet(this.sseAlgorithm)) {
-			request.serverSideEncryption(ServerSideEncryption.fromValue(this.sseAlgorithm));
+			// The String overload, not fromValue: v2's generated fromValue maps an unmodelled value to
+			// UNKNOWN_TO_SDK_VERSION, whose toString is the literal "null", so a typo or an algorithm this
+			// SDK predates would reach S3 as x-amz-server-side-encryption: null and fail without naming
+			// what was typed. v1 put the string on ObjectMetadata verbatim; this keeps that.
+			request.serverSideEncryption(this.sseAlgorithm);
 		}
 		if (this.acl != null) {
 			request.acl(this.acl.toObjectCannedACL());

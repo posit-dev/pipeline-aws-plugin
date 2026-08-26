@@ -34,6 +34,7 @@ import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.awscore.retry.AwsRetryStrategy;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
+import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.http.async.SdkAsyncHttpClient;
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient;
 import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
@@ -216,6 +217,28 @@ public class AWSClientFactoryV2Test {
 		// v1's default socket timeout, carried over unchanged
 		assertThat(AWSClientFactory.getV2SocketTimeout(new EnvVars())).isEqualTo(Duration.ofMillis(50000));
 		assertThat(AWSClientFactory.getV2SyncHttpClient(vars)).isNotNull();
+	}
+
+	/**
+	 * ApacheHttpClient registers its connection manager with the process-static IdleConnectionReaper
+	 * and only close() deregisters it, so a client per invocation leaks a pool per step on a
+	 * long-running controller. Nothing closes the synchronous clients, so they have to be shared.
+	 */
+	@Test
+	public void syncHttpClientIsSharedPerConfiguration() {
+		EnvVars vars = new EnvVars();
+		vars.put(AWSClientFactory.AWS_SDK_SOCKET_TIMEOUT, "4321");
+
+		SdkHttpClient first = AWSClientFactory.getV2SyncHttpClient(vars);
+		SdkHttpClient again = AWSClientFactory.getV2SyncHttpClient(new EnvVars(vars));
+
+		// Same instance for an equal configuration, from a separate EnvVars: the key is the resolved
+		// timeout and proxy, not the identity of the map it came from.
+		assertThat(again).isSameAs(first);
+
+		EnvVars other = new EnvVars();
+		other.put(AWSClientFactory.AWS_SDK_SOCKET_TIMEOUT, "8765");
+		assertThat(AWSClientFactory.getV2SyncHttpClient(other)).isNotSameAs(first);
 	}
 
 	private static S3ClientBuilder configureS3Builder(String endpointUrl) {

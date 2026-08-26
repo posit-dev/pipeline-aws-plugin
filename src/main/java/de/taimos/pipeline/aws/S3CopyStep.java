@@ -247,7 +247,8 @@ public class S3CopyStep extends AbstractS3Step {
 					request.contentDisposition(contentDisposition);
 				}
 				if (sseAlgorithm != null && !sseAlgorithm.isEmpty()) {
-					request.serverSideEncryption(ServerSideEncryption.fromValue(sseAlgorithm));
+					// String overload rather than fromValue - see S3UploadOptions for why.
+					request.serverSideEncryption(sseAlgorithm);
 				}
 			}
 
