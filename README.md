@@ -106,6 +106,22 @@ Only steps that touch the workspace are executed on the agents while the rest is
 
 For the best experience make sure that primary and agents have the same IAM permission and networking capabilities.
 
+## Tuning
+
+These environment variables adjust how the plugin's AWS clients behave. Set them the way you would
+any other environment variable - `environment { }`, `withEnv`, or the controller's global
+configuration - and they apply to the steps that run inside that scope.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `AWS_SDK_RETRIES` | `10` | Retries per request, on top of the initial attempt. |
+| `AWS_SDK_SOCKET_TIMEOUT` | `50000` | Socket timeout in milliseconds. |
+| `AWS_SDK_MAX_CONNECTIONS` | `500` | Maximum concurrent connections across all synchronous AWS requests in the controller. |
+
+`AWS_SDK_MAX_CONNECTIONS` is worth raising only if a very wide `parallel` block fails with
+`ConnectionPoolTimeoutException`; the limit is process-wide because the underlying connection pool is
+shared, and it is a ceiling rather than a preallocation, so raising it costs nothing while idle.
+
 ## Retrieve credentials from node
 
 By default, credentials lookup is done on the master node for all steps.
@@ -1264,10 +1280,10 @@ ebWaitOnEnvironmentHealth(
   `snsPublish`, `cfnUpdate`, `s3Delete`, `ecrLogin` or `withAWS(role: ...)`. SDK v1 leaked in the same
   way; this is the point at which it stops.
   Because the pool is now shared, its size is a process-wide limit on concurrent synchronous AWS
-  requests rather than a per-invocation one, so it is set well above the SDK's default of 50. Set
-  `AWS_SDK_MAX_CONNECTIONS` to override it if a very wide `parallel` block still exhausts it; the
-  value forms part of the sharing key, so raising it takes effect rather than reusing a pool built at
-  the old size.
+  requests rather than a per-invocation one, so it is set to 500 rather than left at the SDK's
+  default of 50. Set `AWS_SDK_MAX_CONNECTIONS` to override it if a very wide `parallel` block still
+  exhausts it; the value forms part of the sharing key, so raising it takes effect rather than
+  reusing a pool built at the old size. See [Tuning](#tuning).
 * **Breaking**: a pipeline that wraps an agent-side `s3Upload` or `s3Download` in
   `try`/`catch (com.amazonaws...AmazonS3Exception)` can no longer catch the AWS exception by type.
   The v1 exception crossed the remoting channel intact; the v2 one does not, and arrives as

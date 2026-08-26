@@ -38,6 +38,8 @@ import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
 import software.amazon.awssdk.http.ExecutableHttpRequest;
 import software.amazon.awssdk.http.HttpExecuteRequest;
 import software.amazon.awssdk.http.SdkHttpClient;
+import software.amazon.awssdk.http.apache.ApacheHttpClient;
+import software.amazon.awssdk.http.apache.ProxyConfiguration;
 import software.amazon.awssdk.http.async.SdkAsyncHttpClient;
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient;
 import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
@@ -298,6 +300,36 @@ public class AWSClientFactoryV2Test {
 		raised.put(AWSClientFactory.AWS_SDK_MAX_CONNECTIONS, "9");
 		assertThat(AWSClientFactory.getV2SyncHttpClient(raised))
 				.isNotSameAs(AWSClientFactory.getV2SyncHttpClient(vars));
+	}
+
+	/**
+	 * The assertions above cannot see whether either setting reaches the builder: SyncHttpClientKey
+	 * varies on both, so two clients built with different values are distinct instances either way,
+	 * and the pool would quietly fall back to the SDK's 50 connections. This asserts the wiring
+	 * itself, the way asyncSocketTimeoutCoversBothDirections does for netty.
+	 */
+	@Test
+	public void syncClientConfigReachesTheBuilder() {
+		EnvVars vars = new EnvVars();
+		vars.put(AWSClientFactory.AWS_SDK_SOCKET_TIMEOUT, "1234");
+		vars.put(AWSClientFactory.AWS_SDK_MAX_CONNECTIONS, "321");
+		ApacheHttpClient.Builder builder = Mockito.mock(ApacheHttpClient.Builder.class, Mockito.RETURNS_SELF);
+
+		AWSClientFactory.applySyncClientConfig(builder, vars);
+
+		Mockito.verify(builder).socketTimeout(Duration.ofMillis(1234));
+		Mockito.verify(builder).maxConnections(321);
+		Mockito.verify(builder).proxyConfiguration(Mockito.any(ProxyConfiguration.class));
+	}
+
+	/** The default the shared pool actually gets, not just what the resolver returns. */
+	@Test
+	public void syncClientDefaultsToTheRaisedConnectionLimit() {
+		ApacheHttpClient.Builder builder = Mockito.mock(ApacheHttpClient.Builder.class, Mockito.RETURNS_SELF);
+
+		AWSClientFactory.applySyncClientConfig(builder, new EnvVars());
+
+		Mockito.verify(builder).maxConnections(500);
 	}
 
 	private static S3ClientBuilder configureS3Builder(String endpointUrl) {

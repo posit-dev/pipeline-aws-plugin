@@ -280,14 +280,23 @@ public class AWSClientFactory implements Serializable {
 	}
 
 	static software.amazon.awssdk.http.SdkHttpClient getV2SyncHttpClient(EnvVars vars) {
-		Duration socketTimeout = getV2SocketTimeout(vars);
-		int maxConnections = getV2MaxConnections(vars);
-		SyncHttpClientKey key = new SyncHttpClientKey(socketTimeout, maxConnections, ProxyConfiguration.v2ProxyIdentity(vars));
-		return SYNC_HTTP_CLIENTS.computeIfAbsent(key, k -> ApacheHttpClient.builder()
-				.socketTimeout(socketTimeout)
-				.maxConnections(maxConnections)
-				.proxyConfiguration(ProxyConfiguration.buildV2ProxyConfiguration(vars))
-				.build());
+		SyncHttpClientKey key = new SyncHttpClientKey(getV2SocketTimeout(vars), getV2MaxConnections(vars),
+				ProxyConfiguration.v2ProxyIdentity(vars));
+		return SYNC_HTTP_CLIENTS.computeIfAbsent(key, k -> applySyncClientConfig(ApacheHttpClient.builder(), vars).build());
+	}
+
+	/**
+	 * Separated out for the same reason as applyAsyncTimeouts: the apache builder exposes no getters,
+	 * so without a seam there is nothing to assert against. It matters more here than it looks -
+	 * SyncHttpClientKey varies on the socket timeout and connection limit, so a test that only builds
+	 * two clients with different settings and finds them distinct passes whether or not either
+	 * setting ever reaches the builder, and the pool would silently fall back to the SDK's defaults.
+	 */
+	static ApacheHttpClient.Builder applySyncClientConfig(ApacheHttpClient.Builder builder, EnvVars vars) {
+		return builder
+				.socketTimeout(getV2SocketTimeout(vars))
+				.maxConnections(getV2MaxConnections(vars))
+				.proxyConfiguration(ProxyConfiguration.buildV2ProxyConfiguration(vars));
 	}
 
 	/**

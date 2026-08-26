@@ -281,4 +281,75 @@ public class ProxyV2Test {
 
 		assertThat(netty.port()).isEqualTo(8443);
 	}
+
+	/**
+	 * v2ProxyIdentity is the proxy half of AWSClientFactory's shared-client cache key, so both
+	 * failure directions are silent and consequential. Two different proxies that digest the same
+	 * would share one pool, sending requests to the wrong host or with the wrong credentials; two
+	 * equal configurations that digest differently would build a client per invocation again,
+	 * reinstating the connection-manager leak the sharing exists to fix. Neither shows up in any
+	 * other assertion.
+	 */
+	@Test
+	public void equalProxyConfigurationsShareAnIdentity() {
+		EnvVars one = new EnvVars();
+		one.put(de.taimos.pipeline.aws.ProxyConfiguration.HTTPS_PROXY, "http://user:pass@proxy.example.com:8080");
+		one.put(de.taimos.pipeline.aws.ProxyConfiguration.NO_PROXY, "example.org,example.net");
+
+		EnvVars same = new EnvVars();
+		same.put(de.taimos.pipeline.aws.ProxyConfiguration.HTTPS_PROXY, "http://user:pass@proxy.example.com:8080");
+		// Listed in the other order. This does not pin the digest's sorting - equal HashSets iterate
+		// alike, so it passes without it - only that NO_PROXY is read as a set rather than a string.
+		same.put(de.taimos.pipeline.aws.ProxyConfiguration.NO_PROXY, "example.net,example.org");
+
+		assertThat(identity(same)).isEqualTo(identity(one));
+	}
+
+	@Test
+	public void eachProxyFieldChangesTheIdentity() {
+		String base = identity(proxyVars("http://user:pass@proxy.example.com:8080"));
+
+		assertThat(identity(proxyVars("http://user:pass@other.example.com:8080"))).isNotEqualTo(base);
+		assertThat(identity(proxyVars("http://user:pass@proxy.example.com:9090"))).isNotEqualTo(base);
+		assertThat(identity(proxyVars("http://other:pass@proxy.example.com:8080"))).isNotEqualTo(base);
+		assertThat(identity(proxyVars("http://user:other@proxy.example.com:8080"))).isNotEqualTo(base);
+
+		EnvVars withNoProxy = proxyVars("http://user:pass@proxy.example.com:8080");
+		withNoProxy.put(de.taimos.pipeline.aws.ProxyConfiguration.NO_PROXY, "example.org");
+		assertThat(identity(withNoProxy)).isNotEqualTo(base);
+	}
+
+	/**
+	 * The field boundary the digest length-prefixes for. Both fields have to be non-null for the
+	 * concatenations to collide - a null one emits a sentinel that keeps them apart on its own - so
+	 * this pairs user "ab"/password "c" against user "a"/password "bc", which run together to the
+	 * same "abc". Without the prefix they digest identically and two proxies with different
+	 * credentials would share one pool.
+	 *
+	 * Set through the system properties because the HTTPS_PROXY regex splits on the first colon and
+	 * cannot express the pair; the Jenkins proxy configuration is the other way in.
+	 */
+	@Test
+	public void adjacentProxyFieldsCannotBeConfused() {
+		System.setProperty("https.proxyHost", "proxy.example.com");
+		System.setProperty("https.proxyUser", "ab");
+		System.setProperty("https.proxyPassword", "c");
+		String abThenC = identity(new EnvVars());
+
+		System.setProperty("https.proxyUser", "a");
+		System.setProperty("https.proxyPassword", "bc");
+		String aThenBc = identity(new EnvVars());
+
+		assertThat(aThenBc).isNotEqualTo(abThenC);
+	}
+
+	private static EnvVars proxyVars(String proxyUrl) {
+		EnvVars vars = new EnvVars();
+		vars.put(de.taimos.pipeline.aws.ProxyConfiguration.HTTPS_PROXY, proxyUrl);
+		return vars;
+	}
+
+	private static String identity(EnvVars vars) {
+		return de.taimos.pipeline.aws.ProxyConfiguration.v2ProxyIdentity(vars);
+	}
 }

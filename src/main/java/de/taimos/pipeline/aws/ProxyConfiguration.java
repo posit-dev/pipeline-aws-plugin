@@ -99,8 +99,11 @@ class ProxyConfiguration {
 		appendField(material, settings.username);
 		appendField(material, settings.password);
 		if (settings.nonProxyHosts != null) {
-			// Sorted so that two equal sets, which a HashSet may iterate in different orders, digest
-			// the same and share a client rather than building one each.
+			// Sorted defensively. Both paths that populate this build a HashSet from a split string,
+			// and two HashSets with equal contents iterate alike, so ordering cannot diverge today -
+			// but the digest has to be a function of the value rather than of how it was assembled,
+			// and a later path that hands over a differently-ordered set would otherwise build a
+			// second pool for a proxy that is already cached.
 			for (String nonProxyHost : new TreeSet<>(settings.nonProxyHosts)) {
 				appendField(material, nonProxyHost);
 			}
