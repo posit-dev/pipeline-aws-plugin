@@ -85,11 +85,12 @@ What you do need to check before upgrading:
   stops matching - the build fails where it used to recover. Catch `Exception` and inspect the
   message.
 * **`withAWS(credentials: ...)` and `withAWS(samlAssertion: ...)` now clear any inherited
-  `AWS_SESSION_TOKEN`** for the duration of the block, so that a credential carrying no token cannot
-  be paired with a stale one. An `AWS_SESSION_TOKEN` you set deliberately - from `withEnv`, a global
-  environment variable, or a credentials binding - is dropped too, because the step cannot tell the
-  two apart. Supply it through `role`/`federatedUserId`, or set it inside the block rather than
-  around it. The drop is logged.
+  `AWS_SESSION_TOKEN`**, so that a credential carrying no token cannot be paired with a stale one. An
+  `AWS_SESSION_TOKEN` you set deliberately - from `withEnv`, a global environment variable, or a
+  credentials binding - is dropped too, because the step cannot tell the two apart; set it inside the
+  block rather than around it. The drop is logged, unless `role` or `federatedUserId` is also set:
+  those mint a fresh session from STS and export its token, so the block has a valid one and nothing
+  is missing.
 
 The `current master` section of the changelog below - this release, until it is tagged - lists these
 and the smaller behaviour changes, including several long-standing bugs fixed along the way, in full.
