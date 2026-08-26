@@ -107,13 +107,17 @@ public class ListAWSAccountsStep extends Step {
 				// AWS retires Account.Status on 9 September 2026 in favour of Account.State, which it
 				// already populates alongside it. Each key falls back to the other, so neither goes
 				// null while the service sends either: Status disappears on that date, and State is
-				// absent against an endpoint that does not model it yet, which AWS_ENDPOINT_URL makes
+				// absent from a response that does not carry it yet, which AWS_ENDPOINT_URL makes
 				// reachable today.
 				//
-				// Filling state from status is lossless, because Status's values are a subset of
-				// State's. The reverse is not, so it stays conditional rather than a swap: while AWS
-				// still sends Status, status reports exactly what it always did, and only once Status
-				// is gone can it carry PENDING_ACTIVATION or CLOSED.
+				// Both preserve their own field first rather than being a straight swap, so while AWS
+				// sends both, each key reports its own - which is what keeps status reporting exactly
+				// what it always did.
+				//
+				// The two sets differ - State adds PENDING_ACTIVATION and CLOSED - so the fallbacks
+				// are not equally safe. A state filled from status is always a legal state, since
+				// Status's values are a subset of State's; a status filled from state can carry one of
+				// those two, which Status never had, though only once Status is gone.
 				//
 				// AsString rather than the enum accessors throughout: the pipeline-visible value has
 				// always been the raw string such as ACTIVE.
