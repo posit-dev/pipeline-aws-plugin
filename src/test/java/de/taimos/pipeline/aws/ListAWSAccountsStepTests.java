@@ -80,7 +80,7 @@ public class ListAWSAccountsStepTests {
 				.id(id)
 				.arn("arn:aws:organizations::123456789012:account/o-exampleorg/" + id)
 				.name(name)
-				// Both, as the service sends both until Status is retired on 9 September 2026.
+				// Both, which the SDK documents as the current shape.
 				.status("ACTIVE")
 				.state("ACTIVE")
 				.build();
@@ -119,19 +119,19 @@ public class ListAWSAccountsStepTests {
 	}
 
 	/**
-	 * AWS retires Account.Status on 9 September 2026 and populates only Account.State after that.
-	 * The documented status key has to keep reporting something then, rather than turning null the
-	 * day the service changes - so it falls back to State once Status stops arriving.
+	 * A response carrying State but not Status - what a stub or a non-AWS endpoint can return today,
+	 * and the shape the Status retirement points toward. The fallback keys off the response either
+	 * way, so the documented status key does not go null.
 	 */
 	@Test
-	public void statusFallsBackToStateOnceAwsStopsSendingIt() throws Exception {
+	public void statusFallsBackToStateWhenTheResponseOmitsStatus() throws Exception {
 		Mockito.when(this.organizations.listAccounts(Mockito.any(ListAccountsRequest.class))).thenReturn(ListAccountsResponse.builder()
 				.accounts(Account.builder()
 						.id("222222222222")
 						.arn("arn:aws:organizations::123456789012:account/o-exampleorg/222222222222")
-						.name("Post Retirement")
-						// No status: what a response looks like after 9 September 2026. CLOSED is also
-						// a value Status could never carry, so this pins that the new set comes through.
+						.name("State Only")
+						// No status. CLOSED is also a value Status could never carry, so this pins that
+						// the new set comes through rather than being clamped to the legacy one.
 						.state("CLOSED")
 						.build())
 				.build()
@@ -153,10 +153,9 @@ public class ListAWSAccountsStepTests {
 	}
 
 	/**
-	 * Which model field feeds which key, pinned by making them disagree. Without this, an
-	 * unconditional status = stateAsString() passes every other case here, and a newly-created
-	 * account would report status=PENDING_ACTIVATION - a value Status cannot carry - to a pipeline
-	 * branching on status == 'ACTIVE', while AWS is still sending Status: ACTIVE.
+	 * Which model field feeds which key, pinned by making them disagree: an unconditional
+	 * status = stateAsString() would publish a State-only value such as PENDING_ACTIVATION under
+	 * status even for a response that supplied a perfectly good Status.
 	 */
 	@Test
 	public void statusAndStateReportTheirOwnFieldWhenTheyDisagree() throws Exception {
@@ -187,12 +186,12 @@ public class ListAWSAccountsStepTests {
 	}
 
 	/**
-	 * The mirror of statusFallsBackToStateOnceAwsStopsSendingIt: an endpoint that does not model
-	 * State - reachable through AWS_ENDPOINT_URL - must not leave the key this release tells users
-	 * to migrate to as the only one returning null.
+	 * The mirror: a response carrying Status but not State, which an endpoint that does not model
+	 * State yet returns today. The key this release tells users to migrate to must not be the only
+	 * one that can come back null.
 	 */
 	@Test
-	public void stateFallsBackToStatusAgainstAnEndpointThatDoesNotSendIt() throws Exception {
+	public void stateFallsBackToStatusWhenTheResponseOmitsState() throws Exception {
 		Mockito.when(this.organizations.listAccounts(Mockito.any(ListAccountsRequest.class))).thenReturn(ListAccountsResponse.builder()
 				.accounts(Account.builder()
 						.id("444444444444")

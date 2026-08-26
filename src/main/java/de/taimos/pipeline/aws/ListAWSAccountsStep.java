@@ -104,23 +104,16 @@ public class ListAWSAccountsStep extends Step {
 				awsAccount.put("arn", account.arn());
 				awsAccount.put("name", account.name());
 				awsAccount.put("safeName", SafeNameCreator.createSafeName(account.name()));
-				// AWS retires Account.Status on 9 September 2026 in favour of Account.State, which it
-				// already populates alongside it. Each key falls back to the other, so neither goes
-				// null while the service sends either: Status disappears on that date, and State is
-				// absent from a response that does not carry it yet, which AWS_ENDPOINT_URL makes
-				// reachable today.
+				// AWS retires Account.Status on 9 September 2026 in favour of Account.State; the SDK
+				// documents both as currently available. Each key falls back to the other so that
+				// neither goes null for a response that carries only one.
 				//
-				// Both preserve their own field first rather than being a straight swap, so while AWS
-				// sends both, each key reports its own - which is what keeps status reporting exactly
-				// what it always did.
+				// Status's values are a subset of State's, so a state filled from status is always a
+				// legal state, while a status filled from state can carry PENDING_ACTIVATION or CLOSED.
 				//
-				// The two sets differ - State adds PENDING_ACTIVATION and CLOSED - so the fallbacks
-				// are not equally safe. A state filled from status is always a legal state, since
-				// Status's values are a subset of State's; a status filled from state can carry one of
-				// those two, which Status never had, though only once Status is gone.
-				//
-				// AsString rather than the enum accessors throughout: the pipeline-visible value has
-				// always been the raw string such as ACTIVE.
+				// AsString rather than the enum accessors: the pipeline-visible value is the raw string
+				// such as ACTIVE, as status has always reported - switching to the enum accessors would
+				// break existing consumers, not merely change a preference.
 				String state = account.stateAsString();
 				String status = account.statusAsString();
 				awsAccount.put("state", state != null ? state : status);
