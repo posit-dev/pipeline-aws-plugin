@@ -779,11 +779,14 @@ The step returns an array of Account objects with the following fields:
 * status - the account status, kept for compatibility; prefer `state`
 
 AWS retires the Organizations `Status` field on **9 September 2026** in favour of `State`, which it
-already returns alongside it. Both keys are provided: `state` is the one to use going forward, and
-`status` falls back to `state` once AWS stops sending `Status`, so an existing pipeline reading
-`status` keeps working rather than seeing `null`. Note that `state` has two values `status` never
-had - `PENDING_ACTIVATION` and `CLOSED` - so a pipeline that enumerates the possible values should
-handle them before then.
+already returns alongside it. Both keys are provided and each falls back to the other, so neither is
+`null` while the service returns either one: `status` keeps working after `Status` is retired, and
+`state` still reports something against an endpoint that does not send `State` yet - which
+`endpointUrl` makes reachable today.
+
+`state` is the one to use going forward. Note it has two values `status` never had -
+`PENDING_ACTIVATION` and `CLOSED` - so a pipeline that enumerates the possible values should handle
+them. Until `Status` is retired, `status` reports exactly what it always did.
 
 ```groovy
 def accounts = listAWSAccounts()
@@ -1277,9 +1280,10 @@ ebWaitOnEnvironmentHealth(
   encryption *algorithm*. The single-file path set it correctly, so the two disagreed; both now go
   through one translation.
 * `listAWSAccounts` now also returns a `state` field for each account. AWS retires the Organizations
-  `Status` field on 9 September 2026 in favour of `State`; `status` is kept and falls back to `state`
-  once AWS stops sending `Status`, so pipelines reading the documented key keep working instead of
-  seeing `null`. `state` carries two values `status` never did, `PENDING_ACTIVATION` and `CLOSED`.
+  `Status` field on 9 September 2026 in favour of `State`; each key falls back to the other, so
+  `status` keeps working once AWS stops sending `Status` and `state` still reports something against
+  an endpoint that does not send it yet. `state` carries two values `status` never did,
+  `PENDING_ACTIVATION` and `CLOSED`; `status` only reports those once `Status` is gone.
 * Fixed: an `sseAlgorithm` the SDK does not model - a typo such as `'AES-256'`, or an algorithm this
   SDK version predates - was sent to S3 as the literal string `null` by `s3Upload` and `s3Copy`, so
   the resulting error never named what was typed. SDK v2 maps an unrecognised value to a sentinel

@@ -115,9 +115,17 @@ public class ListAWSAccountsStep extends Step {
 				// The fallback only engages once Status is gone, which matters because the two are not
 				// the same set - State adds PENDING_ACTIVATION and CLOSED. While AWS still sends
 				// Status, status reports exactly what it always did.
+				// Each key falls back to the other, so neither goes null while the service sends either
+				// one - state is absent against an endpoint that does not model it yet, which
+				// AWS_ENDPOINT_URL makes reachable today.
+				//
+				// Filling state from status is lossless, because Status's values are a subset of
+				// State's. The other direction is not, so it is conditional rather than a swap: while
+				// AWS still sends Status, status reports exactly what it always did, and only once
+				// Status is gone can status carry PENDING_ACTIVATION or CLOSED.
 				String state = account.stateAsString();
 				String status = account.statusAsString();
-				awsAccount.put("state", state);
+				awsAccount.put("state", state != null ? state : status);
 				awsAccount.put("status", status != null ? status : state);
 				return awsAccount;
 			}).collect(Collectors.toList());

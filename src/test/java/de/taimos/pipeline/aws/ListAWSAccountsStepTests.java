@@ -153,6 +153,72 @@ public class ListAWSAccountsStepTests {
 	}
 
 	/**
+	 * Which model field feeds which key, pinned by making them disagree. Without this, an
+	 * unconditional status = stateAsString() passes every other case here, and a newly-created
+	 * account would report status=PENDING_ACTIVATION - a value Status cannot carry - to a pipeline
+	 * branching on status == 'ACTIVE', while AWS is still sending Status: ACTIVE.
+	 */
+	@Test
+	public void statusAndStateReportTheirOwnFieldWhenTheyDisagree() throws Exception {
+		Mockito.when(this.organizations.listAccounts(Mockito.any(ListAccountsRequest.class))).thenReturn(ListAccountsResponse.builder()
+				.accounts(Account.builder()
+						.id("333333333333")
+						.arn("arn:aws:organizations::123456789012:account/o-exampleorg/333333333333")
+						.name("Newly Created")
+						.status("ACTIVE")
+						.state("PENDING_ACTIVATION")
+						.build())
+				.build()
+		);
+
+		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "listAccountsDivergent");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  def accounts = listAWSAccounts()\n"
+				+ "  echo \"status=${accounts[0].status}\"\n"
+				+ "  echo \"state=${accounts[0].state}\"\n"
+				+ "}\n", true)
+		);
+
+		Run run = this.jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+
+		this.jenkinsRule.assertLogContains("status=ACTIVE", run);
+		this.jenkinsRule.assertLogContains("state=PENDING_ACTIVATION", run);
+	}
+
+	/**
+	 * The mirror of statusFallsBackToStateOnceAwsStopsSendingIt: an endpoint that does not model
+	 * State - reachable through AWS_ENDPOINT_URL - must not leave the key this release tells users
+	 * to migrate to as the only one returning null.
+	 */
+	@Test
+	public void stateFallsBackToStatusAgainstAnEndpointThatDoesNotSendIt() throws Exception {
+		Mockito.when(this.organizations.listAccounts(Mockito.any(ListAccountsRequest.class))).thenReturn(ListAccountsResponse.builder()
+				.accounts(Account.builder()
+						.id("444444444444")
+						.arn("arn:aws:organizations::123456789012:account/o-exampleorg/444444444444")
+						.name("Old Endpoint")
+						.status("SUSPENDED")
+						.build())
+				.build()
+		);
+
+		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "listAccountsStatusOnly");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  def accounts = listAWSAccounts()\n"
+				+ "  echo \"status=${accounts[0].status}\"\n"
+				+ "  echo \"state=${accounts[0].state}\"\n"
+				+ "}\n", true)
+		);
+
+		Run run = this.jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+
+		this.jenkinsRule.assertLogContains("status=SUSPENDED", run);
+		this.jenkinsRule.assertLogContains("state=SUSPENDED", run);
+	}
+
+	/**
 	 * The second page must be requested with the token returned by the first. Asserting only the
 	 * call count would stay green if the token stopped being propagated, since the mock returns
 	 * the second page regardless of what it is asked for.
