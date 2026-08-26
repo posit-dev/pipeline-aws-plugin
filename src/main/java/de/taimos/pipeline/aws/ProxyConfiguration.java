@@ -28,10 +28,14 @@ import hudson.EnvVars;
 import jenkins.model.Jenkins;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 
 class ProxyConfiguration {
 
@@ -79,11 +83,48 @@ class ProxyConfiguration {
 	 *
 	 * The SDK's own ProxyConfiguration cannot be used for this: neither the apache nor the netty one
 	 * implements equals or hashCode, so two identically-configured instances never compare equal and
-	 * a cache keyed on them would miss every time and hand back a fresh pool anyway. The resolved
-	 * settings are compared instead, which is also what actually determines the client.
+	 * a cache keyed on them would miss every time and hand back a fresh pool anyway.
+	 *
+	 * A digest rather than the settings themselves, because the cache key outlives the request: the
+	 * settings carry the proxy username and password, and holding them as a map key would pin them in
+	 * the heap for the life of the process. The digest distinguishes configurations just as well and
+	 * retains nothing. It is not a security boundary - it never leaves this JVM - only a way to avoid
+	 * keeping credentials alive longer than the client that uses them.
 	 */
-	static Object v2ProxyIdentity(EnvVars vars) {
-		return resolveV2ProxySettings(vars);
+	static String v2ProxyIdentity(EnvVars vars) {
+		V2ProxySettings settings = resolveV2ProxySettings(vars);
+		StringBuilder material = new StringBuilder();
+		appendField(material, settings.host);
+		appendField(material, String.valueOf(settings.port));
+		appendField(material, settings.username);
+		appendField(material, settings.password);
+		if (settings.nonProxyHosts != null) {
+			// Sorted so that two equal sets, which a HashSet may iterate in different orders, digest
+			// the same and share a client rather than building one each.
+			for (String nonProxyHost : new TreeSet<>(settings.nonProxyHosts)) {
+				appendField(material, nonProxyHost);
+			}
+		}
+		try {
+			byte[] digest = MessageDigest.getInstance("SHA-256").digest(material.toString().getBytes(StandardCharsets.UTF_8));
+			return Base64.getEncoder().encodeToString(digest);
+		} catch (NoSuchAlgorithmException e) {
+			// SHA-256 is mandated by the Java platform, so this cannot happen.
+			throw new IllegalStateException("SHA-256 unavailable", e);
+		}
+	}
+
+	/**
+	 * Length-prefixed so that adjacent fields cannot be confused: without it a username of "ab" with
+	 * an empty password would digest the same as "a" with "b", and two different proxies would share
+	 * a client.
+	 */
+	private static void appendField(StringBuilder material, String value) {
+		if (value == null) {
+			material.append("-1:");
+		} else {
+			material.append(value.length()).append(':').append(value);
+		}
 	}
 
 	private static V2ProxySettings resolveV2ProxySettings(EnvVars vars) {
@@ -258,28 +299,7 @@ class ProxyConfiguration {
 			return builder.build();
 		}
 
-		@Override
-		public boolean equals(Object other) {
-			if (this == other) {
-				return true;
-			}
-			if (!(other instanceof V2ProxySettings)) {
-				return false;
-			}
-			V2ProxySettings that = (V2ProxySettings) other;
-			return this.port == that.port
-					&& Objects.equals(this.host, that.host)
-					&& Objects.equals(this.username, that.username)
-					&& Objects.equals(this.password, that.password)
-					&& Objects.equals(this.nonProxyHosts, that.nonProxyHosts);
-		}
-
-		@Override
-		public int hashCode() {
-			return Objects.hash(this.host, this.port, this.username, this.password, this.nonProxyHosts);
-		}
-
-		/** Deliberately omits the credentials, so that a key can never carry a proxy password into a log. */
+		/** Deliberately omits the credentials, so a proxy password cannot reach a log through here. */
 		@Override
 		public String toString() {
 			return "V2ProxySettings[host=" + this.host + ",port=" + this.port

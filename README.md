@@ -1257,12 +1257,17 @@ ebWaitOnEnvironmentHealth(
   the resulting error never named what was typed. SDK v2 maps an unrecognised value to a sentinel
   whose string form is `"null"`; the value is now passed through verbatim as SDK v1 did, so a
   genuinely new algorithm keeps working and a typo is reported by S3 against the value itself.
-* Synchronous AWS clients now share one HTTP connection pool per distinct socket-timeout and proxy
-  configuration, instead of creating one per step invocation. The SDK v2 Apache client registers its
-  connection manager with a process-static reaper and only deregisters it on close, which nothing in
-  this plugin does, so a long-running controller accumulated a pool per `snsPublish`, `cfnUpdate`,
-  `s3Delete`, `ecrLogin` or `withAWS(role: ...)`. SDK v1 leaked in the same way; this is the point at
-  which it stops.
+* Synchronous AWS clients now share one HTTP connection pool per distinct socket-timeout, proxy and
+  connection-limit configuration, instead of creating one per step invocation. The SDK v2 Apache
+  client registers its connection manager with a process-static reaper and only deregisters it on
+  close, which nothing in this plugin does, so a long-running controller accumulated a pool per
+  `snsPublish`, `cfnUpdate`, `s3Delete`, `ecrLogin` or `withAWS(role: ...)`. SDK v1 leaked in the same
+  way; this is the point at which it stops.
+  Because the pool is now shared, its size is a process-wide limit on concurrent synchronous AWS
+  requests rather than a per-invocation one, so it is set well above the SDK's default of 50. Set
+  `AWS_SDK_MAX_CONNECTIONS` to override it if a very wide `parallel` block still exhausts it; the
+  value forms part of the sharing key, so raising it takes effect rather than reusing a pool built at
+  the old size.
 * **Breaking**: a pipeline that wraps an agent-side `s3Upload` or `s3Download` in
   `try`/`catch (com.amazonaws...AmazonS3Exception)` can no longer catch the AWS exception by type.
   The v1 exception crossed the remoting channel intact; the v2 one does not, and arrives as

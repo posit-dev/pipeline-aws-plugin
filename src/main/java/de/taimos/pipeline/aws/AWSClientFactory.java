@@ -68,6 +68,7 @@ public class AWSClientFactory implements Serializable {
 	static final String AWS_ENDPOINT_URL = "AWS_ENDPOINT_URL";
 	static final String AWS_SDK_SOCKET_TIMEOUT = "AWS_SDK_SOCKET_TIMEOUT";
 	static final String AWS_SDK_RETRIES = "AWS_SDK_RETRIES";
+	static final String AWS_SDK_MAX_CONNECTIONS = "AWS_SDK_MAX_CONNECTIONS";
 	static final String AWS_PIPELINE_STEPS_FROM_NODE = "AWS_PIPELINE_STEPS_FROM_NODE";
 	private static AWSClientFactoryDelegate factoryDelegate;
 
@@ -253,31 +254,60 @@ public class AWSClientFactory implements Serializable {
 	 * the opposite treatment - see getV2AsyncHttpClientBuilder - because its netty event loop must be
 	 * shut down and the transfer sites do close their clients.
 	 *
-	 * The map is bounded by the number of distinct socket-timeout and proxy combinations in use, not
-	 * by the number of invocations: the key is derived from configuration, so a controller with one
-	 * proxy and the default timeout holds exactly one pool.
+	 * The map is bounded by the number of distinct configurations *seen*, not by the number of
+	 * invocations. Nothing evicts: a superseded entry - an admin who edits the Jenkins proxy host or
+	 * rotates its password - is left in place rather than closed, because another thread may still be
+	 * issuing requests on it and closing it under them would fail those with "Connection pool shut
+	 * down". That trades a leak per invocation for a leak per configuration change, which is the
+	 * difference between unbounded growth and a handful of entries over a controller's lifetime.
 	 */
 	private static final ConcurrentMap<SyncHttpClientKey, software.amazon.awssdk.http.SdkHttpClient> SYNC_HTTP_CLIENTS = new ConcurrentHashMap<>();
 
+	/**
+	 * Deliberately far above the SDK's default of 50.
+	 *
+	 * That default is a per-client budget, and while a client was built per invocation it never
+	 * bound: each step got its own 50. Shared, it becomes a ceiling on all concurrent synchronous AWS
+	 * requests in the JVM, so a wide enough parallel block would queue on connection acquisition and
+	 * then fail with ConnectionPoolTimeoutException after the 10s acquire timeout - a failure the
+	 * per-invocation clients could not produce. The cap is a maximum rather than a preallocation and
+	 * idle connections are reaped, so a high value costs nothing on an idle controller.
+	 */
+	private static final String DEFAULT_MAX_CONNECTIONS = "500";
+
+	static int getV2MaxConnections(EnvVars vars) {
+		return Integer.parseInt(vars.get(AWS_SDK_MAX_CONNECTIONS, DEFAULT_MAX_CONNECTIONS));
+	}
+
 	static software.amazon.awssdk.http.SdkHttpClient getV2SyncHttpClient(EnvVars vars) {
-		SyncHttpClientKey key = new SyncHttpClientKey(getV2SocketTimeout(vars), ProxyConfiguration.v2ProxyIdentity(vars));
+		Duration socketTimeout = getV2SocketTimeout(vars);
+		int maxConnections = getV2MaxConnections(vars);
+		SyncHttpClientKey key = new SyncHttpClientKey(socketTimeout, maxConnections, ProxyConfiguration.v2ProxyIdentity(vars));
 		return SYNC_HTTP_CLIENTS.computeIfAbsent(key, k -> ApacheHttpClient.builder()
-				.socketTimeout(k.socketTimeout)
+				.socketTimeout(socketTimeout)
+				.maxConnections(maxConnections)
 				.proxyConfiguration(ProxyConfiguration.buildV2ProxyConfiguration(vars))
 				.build());
 	}
 
 	/**
-	 * Everything getV2SyncHttpClient varies the client on. The proxy half is an opaque value from
-	 * ProxyConfiguration, because the SDK's own ProxyConfiguration has no equals or hashCode.
+	 * Everything getV2SyncHttpClient varies the client on.
+	 *
+	 * The proxy half is a digest from ProxyConfiguration rather than the settings themselves: the
+	 * SDK's own ProxyConfiguration implements neither equals nor hashCode, so a cache keyed on it
+	 * would miss every time, and keying on the resolved settings object would pin the proxy username
+	 * and password in the heap for the process lifetime. A digest compares the same and retains
+	 * nothing.
 	 */
 	private static final class SyncHttpClientKey {
 		private final Duration socketTimeout;
-		private final Object proxyIdentity;
+		private final int maxConnections;
+		private final String proxyDigest;
 
-		SyncHttpClientKey(Duration socketTimeout, Object proxyIdentity) {
+		SyncHttpClientKey(Duration socketTimeout, int maxConnections, String proxyDigest) {
 			this.socketTimeout = socketTimeout;
-			this.proxyIdentity = proxyIdentity;
+			this.maxConnections = maxConnections;
+			this.proxyDigest = proxyDigest;
 		}
 
 		@Override
@@ -289,13 +319,14 @@ public class AWSClientFactory implements Serializable {
 				return false;
 			}
 			SyncHttpClientKey that = (SyncHttpClientKey) other;
-			return Objects.equals(this.socketTimeout, that.socketTimeout)
-					&& Objects.equals(this.proxyIdentity, that.proxyIdentity);
+			return this.maxConnections == that.maxConnections
+					&& Objects.equals(this.socketTimeout, that.socketTimeout)
+					&& Objects.equals(this.proxyDigest, that.proxyDigest);
 		}
 
 		@Override
 		public int hashCode() {
-			return Objects.hash(this.socketTimeout, this.proxyIdentity);
+			return Objects.hash(this.socketTimeout, this.maxConnections, this.proxyDigest);
 		}
 	}
 

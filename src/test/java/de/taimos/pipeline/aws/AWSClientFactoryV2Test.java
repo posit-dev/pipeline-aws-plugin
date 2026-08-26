@@ -26,6 +26,7 @@ import hudson.EnvVars;
 import java.time.Duration;
 import org.junit.Test;
 import org.mockito.Mockito;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
@@ -34,10 +35,13 @@ import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.awscore.retry.AwsRetryStrategy;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
+import software.amazon.awssdk.http.ExecutableHttpRequest;
+import software.amazon.awssdk.http.HttpExecuteRequest;
 import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.http.async.SdkAsyncHttpClient;
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient;
 import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
+import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.retries.api.RetryStrategy;
@@ -239,6 +243,61 @@ public class AWSClientFactoryV2Test {
 		EnvVars other = new EnvVars();
 		other.put(AWSClientFactory.AWS_SDK_SOCKET_TIMEOUT, "8765");
 		assertThat(AWSClientFactory.getV2SyncHttpClient(other)).isNotSameAs(first);
+	}
+
+	/**
+	 * The mirror image of CredentialsProviderOwnershipTest, and the assumption the sharing above
+	 * rests on: an SDK client must not close an SdkHttpClient it was handed. If a future SDK changed
+	 * that, or a step were added that wraps a *synchronous* client in try-with-resources the way the
+	 * transfer steps do for asynchronous ones, the first such step would shut the shared pool and
+	 * every later synchronous step in the JVM would fail with "Connection pool shut down".
+	 */
+	@Test
+	public void closingAServiceClientDoesNotCloseTheHttpClientItWasGiven() {
+		CloseRecordingHttpClient stub = new CloseRecordingHttpClient();
+
+		S3Client client = S3Client.builder()
+				.region(Region.US_WEST_2)
+				.credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("k", "s")))
+				.httpClient(stub)
+				.build();
+		client.close();
+
+		assertThat(stub.closed).isFalse();
+	}
+
+	private static final class CloseRecordingHttpClient implements SdkHttpClient {
+		private boolean closed;
+
+		@Override
+		public ExecutableHttpRequest prepareRequest(HttpExecuteRequest request) {
+			throw new UnsupportedOperationException("no request is ever sent");
+		}
+
+		@Override
+		public void close() {
+			this.closed = true;
+		}
+	}
+
+	/**
+	 * The SDK default is 50 per client. That never bound while a client was built per invocation;
+	 * shared, it would cap concurrent synchronous AWS requests process-wide, so an explicit and much
+	 * larger value is set. Also pinned: the value takes part in the cache key, so raising it on a
+	 * busy controller does not silently reuse a pool built at the old size.
+	 */
+	@Test
+	public void maxConnectionsIsRaisedAboveTheSdkDefaultAndKeyedOn() {
+		assertThat(AWSClientFactory.getV2MaxConnections(new EnvVars())).isGreaterThan(50);
+
+		EnvVars vars = new EnvVars();
+		vars.put(AWSClientFactory.AWS_SDK_MAX_CONNECTIONS, "7");
+		assertThat(AWSClientFactory.getV2MaxConnections(vars)).isEqualTo(7);
+
+		EnvVars raised = new EnvVars();
+		raised.put(AWSClientFactory.AWS_SDK_MAX_CONNECTIONS, "9");
+		assertThat(AWSClientFactory.getV2SyncHttpClient(raised))
+				.isNotSameAs(AWSClientFactory.getV2SyncHttpClient(vars));
 	}
 
 	private static S3ClientBuilder configureS3Builder(String endpointUrl) {

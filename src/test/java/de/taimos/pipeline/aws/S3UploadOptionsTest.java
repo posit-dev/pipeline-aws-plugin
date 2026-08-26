@@ -72,6 +72,20 @@ public class S3UploadOptionsTest {
 	}
 
 	/**
+	 * sseAlgorithm is a free-form pipeline string. v2's fromValue maps anything it does not model to
+	 * UNKNOWN_TO_SDK_VERSION, whose string form is the literal "null", so routing it through the enum
+	 * sent x-amz-server-side-encryption: null and S3 reported an error that never named what was
+	 * typed. Asserted on the string accessor because the enum one reads UNKNOWN_TO_SDK_VERSION either
+	 * way - which is why the pre-existing AES256 tests above passed with the bug present.
+	 */
+	@Test
+	public void anUnmodelledSseAlgorithmReachesS3VerbatimRatherThanAsNull() {
+		PutObjectRequest request = apply(options(null, null, null, null, null, null, null, null, "AES-256", null));
+
+		assertThat(request.serverSideEncryptionAsString()).isEqualTo("AES-256");
+	}
+
+	/**
 	 * v1 applied SSEAwsKeyManagementParams after the metadata's SSE algorithm, so a kmsId won.
 	 */
 	@Test

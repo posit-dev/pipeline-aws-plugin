@@ -170,6 +170,19 @@ public class S3CopyStepTests {
 	}
 
 	/**
+	 * See S3UploadOptionsTest for the detail: an sseAlgorithm the SDK does not model went to S3 as
+	 * the literal string "null". The enum accessor cannot see the difference, so this reads the
+	 * string one.
+	 */
+	@Test
+	public void anUnmodelledSseAlgorithmReachesS3VerbatimRatherThanAsNull() throws Exception {
+		CopyObjectRequest request = this.runAndCapture("s3CopyUnmodelledSse",
+				"fromBucket: 'src', fromPath: 'a', toBucket: 'dst', toPath: 'c', sseAlgorithm: 'AES-256'");
+
+		Assertions.assertThat(request.serverSideEncryptionAsString()).isEqualTo("AES-256");
+	}
+
+	/**
 	 * S3TransferManager closes only a client it created itself, so a client handed to it has to be
 	 * closed by the caller - otherwise every copy leaks the client and its netty event loop. Nothing
 	 * asserted this while the leak was present across three commits.
