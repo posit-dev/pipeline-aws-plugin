@@ -80,7 +80,9 @@ public class ListAWSAccountsStepTests {
 				.id(id)
 				.arn("arn:aws:organizations::123456789012:account/o-exampleorg/" + id)
 				.name(name)
+				// Both, as the service sends both until Status is retired on 9 September 2026.
 				.status("ACTIVE")
+				.state("ACTIVE")
 				.build();
 	}
 
@@ -101,6 +103,7 @@ public class ListAWSAccountsStepTests {
 				+ "  echo \"name=${accounts[0].name}\"\n"
 				+ "  echo \"safeName=${accounts[0].safeName}\"\n"
 				+ "  echo \"status=${accounts[0].status}\"\n"
+				+ "  echo \"state=${accounts[0].state}\"\n"
 				+ "}\n", true)
 		);
 
@@ -112,6 +115,41 @@ public class ListAWSAccountsStepTests {
 		this.jenkinsRule.assertLogContains("name=My Account", run);
 		this.jenkinsRule.assertLogContains("safeName=my-account", run);
 		this.jenkinsRule.assertLogContains("status=ACTIVE", run);
+		this.jenkinsRule.assertLogContains("state=ACTIVE", run);
+	}
+
+	/**
+	 * AWS retires Account.Status on 9 September 2026 and populates only Account.State after that.
+	 * The documented status key has to keep reporting something then, rather than turning null the
+	 * day the service changes - so it falls back to State once Status stops arriving.
+	 */
+	@Test
+	public void statusFallsBackToStateOnceAwsStopsSendingIt() throws Exception {
+		Mockito.when(this.organizations.listAccounts(Mockito.any(ListAccountsRequest.class))).thenReturn(ListAccountsResponse.builder()
+				.accounts(Account.builder()
+						.id("222222222222")
+						.arn("arn:aws:organizations::123456789012:account/o-exampleorg/222222222222")
+						.name("Post Retirement")
+						// No status: what a response looks like after 9 September 2026. CLOSED is also
+						// a value Status could never carry, so this pins that the new set comes through.
+						.state("CLOSED")
+						.build())
+				.build()
+		);
+
+		WorkflowJob job = this.jenkinsRule.jenkins.createProject(WorkflowJob.class, "listAccountsStateFallback");
+		job.setDefinition(new CpsFlowDefinition(""
+				+ "node {\n"
+				+ "  def accounts = listAWSAccounts()\n"
+				+ "  echo \"status=${accounts[0].status}\"\n"
+				+ "  echo \"state=${accounts[0].state}\"\n"
+				+ "}\n", true)
+		);
+
+		Run run = this.jenkinsRule.assertBuildStatusSuccess(job.scheduleBuild2(0));
+
+		this.jenkinsRule.assertLogContains("status=CLOSED", run);
+		this.jenkinsRule.assertLogContains("state=CLOSED", run);
 	}
 
 	/**

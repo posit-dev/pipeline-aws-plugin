@@ -104,9 +104,21 @@ public class ListAWSAccountsStep extends Step {
 				awsAccount.put("arn", account.arn());
 				awsAccount.put("name", account.name());
 				awsAccount.put("safeName", SafeNameCreator.createSafeName(account.name()));
-				// statusAsString, not status(): v2 models this as an enum, and the pipeline-visible
+				// statusAsString, not status(): v2 models these as enums, and the pipeline-visible
 				// value has always been the raw string such as ACTIVE.
-				awsAccount.put("status", account.statusAsString());
+				//
+				// AWS retires Account.Status on 9 September 2026 in favour of Account.State, which it
+				// already populates alongside it. Both keys are exposed: state is the one to use, and
+				// status falls back to it so that a pipeline reading the documented key keeps working
+				// after the service stops sending Status rather than silently seeing null.
+				//
+				// The fallback only engages once Status is gone, which matters because the two are not
+				// the same set - State adds PENDING_ACTIVATION and CLOSED. While AWS still sends
+				// Status, status reports exactly what it always did.
+				String state = account.stateAsString();
+				String status = account.statusAsString();
+				awsAccount.put("state", state);
+				awsAccount.put("status", status != null ? status : state);
 				return awsAccount;
 			}).collect(Collectors.toList());
 		}

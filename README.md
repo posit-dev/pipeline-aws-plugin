@@ -775,7 +775,15 @@ The step returns an array of Account objects with the following fields:
 * arn - the organizations ARN
 * name - the account name
 * safeName - the name converted to only contain lower-case, numbers and hyphens
-* status - the account status
+* state - the account state: `PENDING_ACTIVATION`, `ACTIVE`, `SUSPENDED`, `PENDING_CLOSURE` or `CLOSED`
+* status - the account status, kept for compatibility; prefer `state`
+
+AWS retires the Organizations `Status` field on **9 September 2026** in favour of `State`, which it
+already returns alongside it. Both keys are provided: `state` is the one to use going forward, and
+`status` falls back to `state` once AWS stops sending `Status`, so an existing pipeline reading
+`status` keeps working rather than seeing `null`. Note that `state` has two values `status` never
+had - `PENDING_ACTIVATION` and `CLOSED` - so a pipeline that enumerates the possible values should
+handle them before then.
 
 ```groovy
 def accounts = listAWSAccounts()
@@ -1268,6 +1276,10 @@ ebWaitOnEnvironmentHealth(
 * Fixed: `s3Upload` with `includePathPattern` and `kmsId` sent the KMS key id as the server-side
   encryption *algorithm*. The single-file path set it correctly, so the two disagreed; both now go
   through one translation.
+* `listAWSAccounts` now also returns a `state` field for each account. AWS retires the Organizations
+  `Status` field on 9 September 2026 in favour of `State`; `status` is kept and falls back to `state`
+  once AWS stops sending `Status`, so pipelines reading the documented key keep working instead of
+  seeing `null`. `state` carries two values `status` never did, `PENDING_ACTIVATION` and `CLOSED`.
 * Fixed: an `sseAlgorithm` the SDK does not model - a typo such as `'AES-256'`, or an algorithm this
   SDK version predates - was sent to S3 as the literal string `null` by `s3Upload` and `s3Copy`, so
   the resulting error never named what was typed. SDK v2 maps an unrecognised value to a sentinel
