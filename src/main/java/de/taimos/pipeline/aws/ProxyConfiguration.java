@@ -99,7 +99,8 @@ class ProxyConfiguration {
 		appendField(material, settings.username);
 		appendField(material, settings.password);
 		if (settings.nonProxyHosts != null) {
-			// Sorted defensively. Both paths that populate this build a HashSet from a split string,
+			// Sorted defensively. All three paths that populate this - NO_PROXY, the http.nonProxyHosts
+			// system property and the Jenkins proxy configuration - build a HashSet from a split string,
 			// and two HashSets with equal contents iterate alike, so ordering cannot diverge today -
 			// but the digest has to be a function of the value rather than of how it was assembled,
 			// and a later path that hands over a differently-ordered set would otherwise build a
