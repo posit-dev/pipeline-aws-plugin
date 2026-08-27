@@ -187,8 +187,8 @@ public class ListAWSAccountsStepTests {
 
 	/**
 	 * The mirror: a response carrying Status but not State, which an endpoint that does not model
-	 * State yet returns today. The key this release tells users to migrate to must not be the only
-	 * one that can come back null.
+	 * State yet returns today. The state key, which the README recommends over status, must not be
+	 * the only one that can come back null.
 	 */
 	@Test
 	public void stateFallsBackToStatusWhenTheResponseOmitsState() throws Exception {

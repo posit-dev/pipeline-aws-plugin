@@ -112,8 +112,11 @@ public class ListAWSAccountsStep extends Step {
 				// legal state, while a status filled from state can carry PENDING_ACTIVATION or CLOSED.
 				//
 				// AsString rather than the enum accessors: the pipeline-visible value is the raw string
-				// such as ACTIVE, as status has always reported - switching to the enum accessors would
-				// break existing consumers, not merely change a preference.
+				// such as ACTIVE, which is what status has always reported. For a value this SDK models
+				// the enum stringifies to the same thing, so the difference only shows on one it does
+				// not - there the enum accessor yields UNKNOWN_TO_SDK_VERSION, rendering as the literal
+				// "null", while AsString still returns what the service sent. Same trap as
+				// S3UploadOptions describes and EBWaitOnEnvironmentStatusStepTest pins.
 				String state = account.stateAsString();
 				String status = account.statusAsString();
 				awsAccount.put("state", state != null ? state : status);
